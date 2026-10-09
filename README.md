@@ -124,6 +124,14 @@ setsid nohup ./worldfront >> worldfront.out 2>&1 < /dev/null & disown
 curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8095/
 ```
 
+**Mise à jour automatique** : `deploy/maj-auto.sh` vérifie la branche suivie sur GitHub ; si elle a avancé, il récupère, recompile et redémarre le jeu (sinon il ne fait rien). À installer une fois avec cron :
+
+```bash
+crontab -e
+# puis ajouter la ligne :
+*/5 * * * * cd ~/worldfront && ./deploy/maj-auto.sh >> maj-auto.log 2>&1
+```
+
 Le monde est sauvegardé toutes les 30 s, et aussi à l'arrêt (`kill` ou Ctrl+C). Seul un `kill -9` peut faire perdre les 30 dernières secondes.
 
 ### Session VEX

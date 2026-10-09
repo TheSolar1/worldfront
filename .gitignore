@@ -2,3 +2,5 @@
 /data/
 config.json
 target-test/
+maj-auto.log
+.maj-auto.lock
