@@ -334,22 +334,24 @@ function clicCarte(i, e) {
 }
 
 // ── Menu radial (facon OpenFront) ─────────────────────────────────
-// Clic gauche sur une case : ses actions en cercle autour du curseur.
-// Une entree avec sous-menu remplace le cercle ; le bouton central revient
-// en arriere ou ferme. Les entrees finales sont des boutons data-act :
-// le meme gestionnaire que le reste de l'interface les execute.
-let radial = null; // { i, pile: [{ titre, items }], x, y }
+// Clic gauche sur une case : un anneau de secteurs autour du curseur. Un
+// groupe ouvre un second anneau a l'exterieur (le niveau precedent passe a
+// l'interieur) ; le centre revient en arriere ou ferme. Sous l'anneau, une
+// etiquette donne le nom, le cout ou la raison de l'entree survolee.
+// Les secteurs finaux portent data-act : le gestionnaire global les execute.
+let radial = null; // { i, pile: [{ titre, items, angle }], x, y, survol }
 
-// Menu de case : une liste lisible (icone, nom, explication) pres du
-// curseur. Une entree `ouvert` montre ses sous-entrees directement (ex.
-// Produire sur un batiment) ; les autres groupes s'ouvrent en sous-liste
-// avec un bouton retour.
+const RAD = { c: 40, r1: [46, 104], r2: [110, 170], taille: 352 };
+
 function ouvrirRadial(i, e) {
   const items = actionsRadiales(S, i);
   // Seulement « Infos » : inutile d'ouvrir un menu.
   if (items.length === 1) { choisirCase(i); return; }
   const r = $('#wf-carte').getBoundingClientRect();
-  radial = { i, pile: [{ titre: null, items }], x: e.clientX - r.left, y: e.clientY - r.top };
+  radial = { i, pile: [{ titre: null, items, angle: -Math.PI / 2 }], x: e.clientX - r.left, y: e.clientY - r.top, survol: null };
+  // Sur un batiment, ses unites a produire s'ouvrent tout de suite.
+  const k = items.findIndex(it => it.ouvert && it.sous);
+  if (k >= 0) radial.pile.push({ titre: items[k].label, items: items[k].sous, angle: angleSecteur(items.length, k), parent: k });
   S.carte.selectionnerCase(i);
   dessinerRadial();
 }
@@ -361,65 +363,123 @@ function fermerRadial() {
   if (S.selCase == null) S.carte.selectionnerCase(null);
 }
 
-/** Une ligne du menu ; `chemin` repere l'entree pour ouvrir son groupe. */
-function ligneMenu(it, chemin) {
-  const cls = `wf-ctx-ligne ${it.danger ? 'danger' : ''} ${it.off ? 'off' : ''}`;
-  const data = it.sous ? `data-rad="${chemin}"` : it.act ? `data-act="${it.act}" ${Object.entries(it.data || {}).map(([c, v]) => `data-${c}="${esc(String(v))}"`).join(' ')}` : '';
-  const corps = `<span class="wf-ctx-ic">${ico(it.ico)}</span><span class="wf-ctx-txt"><b>${esc(it.label)}</b>${it.info ? `<small>${esc(it.info)}</small>` : ''}</span>`;
-  // Quantites rapides (produire x5, x10) a cote de l'action principale.
-  if (it.qtes && !it.off) {
-    const plus = it.qtes.map(q => `<button class="wf-ctx-qte" data-act="${it.act}" ${Object.entries({ ...it.data, qte: q }).map(([c, v]) => `data-${c}="${esc(String(v))}"`).join(' ')}>×${q}</button>`).join('');
-    return `<div class="wf-ctx-rang"><button class="${cls}" ${data}>${corps}</button>${plus}</div>`;
-  }
-  return `<button class="${cls}" ${data} ${it.off ? 'disabled' : ''}>${corps}${it.sous ? ico('chevron-right') : ''}</button>`;
+/** Angle du milieu du secteur k sur n (le premier en haut). */
+function angleSecteur(n, k) { return -Math.PI / 2 + (2 * Math.PI * (k + 0.5)) / n; }
+
+/** Secteur d'anneau entre les rayons r0..r1 et les angles a0..a1. */
+function arcSvg(r0, r1, a0, a1) {
+  const C = RAD.taille / 2, p = (r, a) => `${(C + r * Math.cos(a)).toFixed(2)},${(C + r * Math.sin(a)).toFixed(2)}`;
+  const grand = a1 - a0 > Math.PI ? 1 : 0;
+  return `M${p(r1, a0)} A${r1},${r1} 0 ${grand} 1 ${p(r1, a1)} L${p(r0, a1)} A${r0},${r0} 0 ${grand} 0 ${p(r0, a0)} Z`;
+}
+
+/** Un anneau : ses secteurs (SVG) et leurs icones (HTML par-dessus).
+ *  `centre` : angle autour duquel l'anneau exterieur se deploie. */
+function anneau(items, [r0, r1], niveau, centre, actif) {
+  const n = items.length;
+  // Anneau exterieur : un eventail autour du parent quand il y a peu
+  // d'entrees, l'anneau complet sinon.
+  const pas = niveau === 0 || n > 9 ? (2 * Math.PI) / n : Math.min(Math.PI / 4.2, (2 * Math.PI) / n);
+  const debut = niveau === 0 || n > 9 ? -Math.PI / 2 : centre - (pas * n) / 2;
+  const ecart = Math.min(0.03, pas * 0.08);
+  const C = RAD.taille / 2, rm = (r0 + r1) / 2;
+  let svg = '', html = '';
+  items.forEach((it, k) => {
+    const a0 = debut + k * pas + ecart, a1 = debut + (k + 1) * pas - ecart, am = (a0 + a1) / 2;
+    const data = it.off ? '' : it.sous ? `data-rad="${niveau}.${k}"` : it.act ? `data-act="${it.act}" ${Object.entries(it.data || {}).map(([c, v]) => `data-${c}="${esc(String(v))}"`).join(' ')}` : '';
+    const cls = `wf-rad-sec ${it.danger ? 'danger' : ''} ${it.off ? 'off' : ''} ${it.sous ? 'groupe' : ''} ${actif === k ? 'actif' : ''} ${it.qtes ? 'qtes' : ''}`;
+    svg += `<path class="${cls}" d="${arcSvg(r0, r1, a0, a1)}" data-n="${niveau}" data-k="${k}" ${data}/>`;
+    const t = Math.min(22, (r1 - r0) * 0.42, rm * (a1 - a0) * 0.55);
+    html += `<span class="wf-rad-ic ${it.off ? 'off' : ''} ${it.danger ? 'danger' : ''}" style="left:${(C + rm * Math.cos(am)).toFixed(1)}px;top:${(C + rm * Math.sin(am)).toFixed(1)}px;--t:${t.toFixed(1)}px">${ico(it.ico)}${it.sous ? '<b></b>' : ''}</span>`;
+  });
+  return { svg, html };
 }
 
 function dessinerRadial() {
   const el = $('#wf-radial');
-  const niveau = radial.pile[radial.pile.length - 1];
-  const p = S.carte.proprio[radial.i] >= 0 ? S.pays.get(S.carte.proprio[radial.i]) : null;
-  const titre = niveau.titre ? esc(niveau.titre) : `${esc(nomCase(S, radial.i))}${p ? ` <small>${esc(p.nom)}</small>` : ''}`;
-  const corps = niveau.items.map((it, k) => it.ouvert && it.sous
-    ? `<div class="wf-ctx-section">${ico(it.ico)} ${esc(it.label)}${it.info ? ` <small>${esc(it.info)}</small>` : ''}</div>` + it.sous.map((x, j) => ligneMenu(x, `${k}.${j}`)).join('')
-    : ligneMenu(it, String(k))).join('');
-  el.innerHTML = `<div class="wf-ctx">
-    <div class="wf-ctx-tete">${radial.pile.length > 1 ? `<button class="wf-ctx-x" data-rad="retour" aria-label="Retour">${ico('arrow-left')}</button>` : ''}
-      <b>${titre}</b><button class="wf-ctx-x" data-rad="fermer" aria-label="Fermer">${ico('xmark')}</button></div>
-    <div class="wf-ctx-corps">${corps}</div></div>`;
+  const pile = radial.pile;
+  const dedans = pile.length > 1 ? pile[pile.length - 2] : pile[0];
+  const dehors = pile.length > 1 ? pile[pile.length - 1] : null;
+  const a = anneau(dedans.items, RAD.r1, 0, 0, dehors?.parent);
+  const b = dehors ? anneau(dehors.items, RAD.r2, 1, dehors.angle, null) : { svg: '', html: '' };
+  const T = RAD.taille, C = T / 2;
+  el.innerHTML = `<svg width="${T}" height="${T}" viewBox="0 0 ${T} ${T}">${a.svg}${b.svg}
+      <circle class="wf-rad-centre" cx="${C}" cy="${C}" r="${RAD.c}" data-rad="retour"/></svg>
+    ${a.html}${b.html}
+    <span class="wf-rad-ic centre" style="left:${C}px;top:${C}px;--t:16px">${ico(pile.length > 1 ? 'arrow-left' : 'xmark')}</span>
+    <div class="wf-rad-etiquette"></div>`;
   el.hidden = false;
-  // Pres du curseur, sans deborder de la carte.
+  // Centre sur le curseur, sans deborder de la carte.
   const r = $('#wf-carte').getBoundingClientRect();
-  const boite = el.firstElementChild;
-  const l = boite.offsetWidth, h = boite.offsetHeight;
-  el.style.left = Math.max(8, Math.min(r.width - l - 8, radial.x + 14)) + 'px';
-  el.style.top = Math.max(8, Math.min(r.height - h - 8, radial.y - 20)) + 'px';
+  el.style.left = Math.max(C - (dehors ? 0 : 60), Math.min(r.width - C + (dehors ? 0 : 60), radial.x)) + 'px';
+  el.style.top = Math.max(C - (dehors ? 0 : 60), Math.min(r.height - C - 40, radial.y)) + 'px';
+  etiquetteRadial(null);
   el.classList.remove('ouvert'); void el.offsetWidth; el.classList.add('ouvert');
+}
+
+/** Etiquette sous l'anneau : l'entree survolee, sinon la case. */
+function etiquetteRadial(it) {
+  const e = $('#wf-radial .wf-rad-etiquette');
+  if (!e || !radial) return;
+  if (!it) {
+    const p = S.carte.proprio[radial.i] >= 0 ? S.pays.get(S.carte.proprio[radial.i]) : null;
+    const niv = radial.pile[radial.pile.length - 1];
+    e.innerHTML = `<b>${niv.titre ? esc(niv.titre) : esc(nomCase(S, radial.i))}</b><small>${niv.titre ? 'Survolez un secteur' : p ? esc(p.nom) : 'Terre libre'}</small>`;
+    return;
+  }
+  const qtes = it.qtes && !it.off ? '<em>Clic : ×1 · Maj+clic : ×5 · Ctrl+clic : ×10</em>' : '';
+  e.innerHTML = `<b>${esc(it.label)}</b>${it.info ? `<small>${esc(it.info)}</small>` : ''}${qtes}`;
+}
+
+function entreeRadial(sec) {
+  const n = +sec.dataset.n, k = +sec.dataset.k, pile = radial.pile;
+  const niveau = pile.length > 1 ? pile[pile.length - 2 + n] : pile[0];
+  return niveau.items[k];
 }
 
 function initRadial() {
   const el = $('#wf-radial');
+  el.addEventListener('mouseover', e => {
+    const sec = e.target.closest('.wf-rad-sec');
+    if (!radial) return;
+    etiquetteRadial(sec ? entreeRadial(sec) : null);
+  });
   el.addEventListener('click', e => {
-    const b = e.target.closest('button');
-    if (!b || !radial) return;
-    if (b.dataset.rad === 'fermer') { fermerRadial(); return; }
-    if (b.dataset.rad === 'retour') {
+    if (!radial) return;
+    const sec = e.target.closest('[data-rad], [data-act]');
+    if (!sec) return;
+    if (sec.dataset.rad === 'retour') {
       if (radial.pile.length > 1) { radial.pile.pop(); dessinerRadial(); } else fermerRadial();
       return;
     }
-    if (b.dataset.rad != null) {
-      let it = null, liste = radial.pile[radial.pile.length - 1].items;
-      for (const k of b.dataset.rad.split('.')) { it = liste[+k]; liste = it.sous; }
-      radial.pile.push({ titre: it.label, items: it.sous });
+    if (sec.dataset.rad != null) {
+      const [n, k] = sec.dataset.rad.split('.').map(Number);
+      const it = entreeRadial(sec);
+      // Groupe de l'anneau interieur : il remplace l'anneau exterieur ouvert ;
+      // groupe de l'anneau exterieur : on descend d'un niveau.
+      if (radial.pile.length > 1 && n === 0) radial.pile.pop();
+      const parent = radial.pile[radial.pile.length - 1];
+      const nb = parent.items.length;
+      radial.pile.push({ titre: it.label, items: it.sous, angle: angleSecteur(nb, k), parent: k });
       dessinerRadial();
       return;
     }
-    // Action finale : executee par le gestionnaire global (data-act), puis on
-    // ferme. Produire laisse le menu ouvert pour enchainer les commandes.
-    if (b.dataset.act === 'produire') {
-      setTimeout(() => { if (radial && radial.pile.length === 1) { radial.pile[0].items = actionsRadiales(S, radial.i); dessinerRadial(); } }, 700);
-    } else if (b.dataset.act) setTimeout(fermerRadial, 0);
+    // Produire : Maj = x5, Ctrl = x10 ; le menu reste ouvert pour enchainer.
+    if (sec.dataset.act === 'produire') {
+      sec.dataset.qte = e.shiftKey ? 5 : e.ctrlKey || e.metaKey ? 10 : 1;
+      setTimeout(() => {
+        if (!radial) return;
+        const items = actionsRadiales(S, radial.i);
+        const k = items.findIndex(it => it.ouvert && it.sous);
+        radial.pile = [{ titre: null, items, angle: -Math.PI / 2 }];
+        if (k >= 0) radial.pile.push({ titre: items[k].label, items: items[k].sous, angle: angleSecteur(items.length, k), parent: k });
+        dessinerRadial();
+      }, 700);
+      return;
+    }
+    setTimeout(fermerRadial, 0);
   });
-  // Molette ou glisser sur la carte : le menu ne suit pas la camera, on le ferme.
+  // Molette sur la carte : le menu ne suit pas la camera, on le ferme.
   $('#wf-carte').addEventListener('wheel', fermerRadial, { passive: true });
 }
 

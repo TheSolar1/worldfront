@@ -1544,7 +1544,7 @@ function protection(S, i) {
   const m = S.moi;
   const n = possede(S, 'bouclier_energie');
   const actif = (S.boucliers || []).some(b => b.proprio === m.id && b.case === i);
-  return { ico: 'shield-halved', label: 'Protection', sous: [
+  return { ico: 'shield-heart', label: 'Protection', sous: [
     { ico: 'shield-heart', label: "Bouclier d'énergie", act: 'bouclier_ici', data: { case: i }, off: actif || n < 1,
       info: actif ? 'Cette case est déjà protégée' : n < 1 ? 'Aucun en stock : fabriquez-en à la fabrique (niveau 7)' : `30 min, rayon 2 · ${fmt(Math.floor(n))} en stock` },
   ] };
