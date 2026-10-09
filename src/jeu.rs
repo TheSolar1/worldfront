@@ -375,6 +375,22 @@ fn trous_noirs(m: &mut Monde, dt: f64) {
     }
 }
 
+/// Fin de partie : un monde neuf, sans aucun trou noir (ils disparaissent
+/// avec l'ancienne carte). Garde la taille et le nombre de bots. Rend la graine.
+pub fn nouveau_monde(m: &mut Monde) -> u64 {
+    let graine = rand::thread_rng().gen_range(1..u32::MAX as u64);
+    let (l, h, bots) = (m.largeur, m.hauteur, m.bots_admin);
+    *m = Monde::generer(l, h, graine);
+    m.bots_admin = bots;
+    graine
+}
+
+/// Un trou noir a avale toute la carte : la partie est finie.
+fn carte_avalee(m: &Monde) -> bool {
+    let max = m.largeur.max(m.hauteur) as f64;
+    m.trous_noirs.iter().any(|t| t.rayon >= max - 1e-9)
+}
+
 /// Zone morte autour d'un trou noir : le disque d'accretion detruit la
 /// carte elle-meme (neant), plus personne, plus rien.
 fn avaler(m: &mut Monde, centre: usize, r: i64) {
@@ -1651,6 +1667,11 @@ fn frappe_speciale(m: &mut Monde, pid: u32, genre: &str, cible: usize) {
 // Tick
 // ══════════════════════════════════════════════════════════════════
 pub fn tick(m: &mut Monde, dt: f64) -> HashMap<u32, Bilan> {
+    // Le trou noir a tout avale : fin de partie, nouveau monde sans lui.
+    if carte_avalee(m) {
+        nouveau_monde(m);
+        m.evenement(None, "annonce", "Fin de partie : le trou noir a avalé le monde entier. Un nouveau monde est né, fondez votre nation !".into(), None);
+    }
     m.temps += dt;
     let mut rng = rand::thread_rng();
     let bl = bilans(m);
@@ -2585,18 +2606,7 @@ pub fn commande(m: &mut Monde, j: &Joueur, cmd: &Value, regles: &Regles) -> Resu
             return Ok(format!("{} nation(s) jouée(s) par l'ordinateur ({} retirée(s)).", nb, trop.len()));
         }
         "admin_nouvelle_carte" if j.admin => {
-            let graine = rand::thread_rng().gen_range(1..u32::MAX as u64);
-            let (l, h, bots) = (m.largeur, m.hauteur, m.bots_admin);
-            // Les trous noirs sont eternels : ils survivent au nouveau monde,
-            // au meme endroit et a la meme taille.
-            let trous = std::mem::take(&mut m.trous_noirs);
-            *m = Monde::generer(l, h, graine);
-            m.bots_admin = bots;
-            let n = m.cases.len();
-            for t in trous.into_iter().filter(|t| t.case < n) {
-                avaler(m, t.case, (t.rayon + 1e-9).floor() as i64);
-                m.trous_noirs.push(t);
-            }
+            let graine = nouveau_monde(m);
             m.evenement(None, "annonce", "Nouveau monde : l'administration a généré une nouvelle carte. Fondez votre nation !".into(), None);
             return Ok(format!("Nouvelle carte générée (graine {}).", graine));
         }
@@ -4155,10 +4165,26 @@ mod tests_armes {
         }
         assert!(m.trous_noirs[0].rayon >= 4.0 - 1e-6);
         assert!(m.rayon(cible, 4).iter().all(|&v| m.cases[v].proprio.is_none() && m.cases[v].terrain == T_NEANT));
-        // Eternel : il survit meme a « Nouvelle carte ».
+        // Fin de partie (« Nouvelle carte ») : il disparait avec l'ancien monde.
         let admin = Joueur { user_id: 1, nom: "Admin", admin: true, triche: false };
         commande(&mut m, &admin, &json!({ "action": "admin_nouvelle_carte" }), &regles).unwrap();
-        assert_eq!(m.trous_noirs.len(), 1);
-        assert!(m.rayon(cible, 4).iter().all(|&v| m.cases[v].proprio.is_none() && m.cases[v].terrain == T_NEANT));
+        assert!(m.trous_noirs.is_empty());
+        assert!(m.cases.iter().all(|c| c.terrain != T_NEANT), "plus de neant sur la nouvelle carte");
+    }
+
+    /// Quand le trou noir a avale toute la carte, un nouveau monde commence.
+    #[test]
+    fn trou_noir_geant_termine_la_partie() {
+        let regles = Regles { protection_s: 0, vitesse: 1.0 };
+        let mut m = Monde::generer(30, 20, 7);
+        crate::bots::assurer(&mut m, 1, &regles, 0.0);
+        let pid = *m.pays.keys().next().unwrap();
+        let cible = m.pays[&pid].capitale;
+        frappe_speciale(&mut m, pid, "bombe_trou_noir", cible);
+        let graine = m.graine;
+        m.trous_noirs[0].rayon = 30.0;
+        tick(&mut m, 1.0);
+        assert!(m.trous_noirs.is_empty());
+        assert_ne!(m.graine, graine, "nouvelle carte");
     }
 }
