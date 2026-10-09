@@ -99,9 +99,6 @@ pub struct Pays {
     pub stock: crate::fabrication::Stock,
     #[serde(default)]
     pub fabrications: Vec<crate::fabrication::Fabrication>,
-    /// Temps de jeu (m.temps) a partir duquel le laser peut retirer.
-    #[serde(default)]
-    pub laser_pret: f64,
 }
 
 impl Pays {

@@ -1421,10 +1421,11 @@ fn fabriquer(p: &mut Pays, b: &Bilan, dt: f64) -> Vec<String> {
 /// Armes que l'on tire depuis un silo avec la commande « arme_speciale ».
 pub const ARMES_SPECIALES: [&str; 3] = ["bombe_trou_noir", "bombe_antimatiere", "point_zero"];
 
-/// Les bombes a trou noir et a antimatiere ne partent que sur un missile
-/// non conventionnel (fabrique), consomme a chaque tir.
+/// Les armes plus puissantes que la bombe atomique (trou noir, antimatiere,
+/// point zero) ne partent que sur un missile non conventionnel (fabrique),
+/// consomme a chaque tir.
 pub fn exige_missile(objet: &str) -> bool {
-    matches!(objet, "bombe_trou_noir" | "bombe_antimatiere")
+    matches!(objet, "bombe_trou_noir" | "bombe_antimatiere" | "point_zero")
 }
 
 /// Bombe a trou noir, a antimatiere ou onde du point zero, tiree depuis un
@@ -1469,14 +1470,9 @@ fn arme_speciale(m: &mut Monde, pid: u32, cmd: &Value, regles: &Regles) -> Resul
     Ok(format!("{} : lancement réussi, impact dans {} s.", quoi, (duree / regles.vitesse).round()))
 }
 
-/// Portee du laser (cases depuis son territoire) et delai entre deux tirs (s).
-pub const PORTEE_LASER: i64 = 4;
-pub const PORTEE_LASER_MILITAIRE: i64 = 8;
-pub const RECHARGE_LASER: f64 = 60.0;
-
-/// Tir laser : instantane, sans silo, depuis n'importe quelle case de son
-/// territoire a portee. Les lasers ne s'usent pas mais doivent recharger.
-/// Plus on en a, plus le rayon frappe fort (le laser militaire compte 4).
+/// Tir laser : instantane, sans silo, sans limite de portee ni de recharge.
+/// Les lasers ne s'usent pas. Plus on en a, plus le rayon frappe fort (le
+/// laser militaire compte 4) : il brule la case visee et ses voisines.
 fn tir_laser(m: &mut Monde, pid: u32, cmd: &Value) -> Result<String, String> {
     let cible = u(cmd, "cible").ok_or("Cible manquante.")? as usize;
     if cible >= m.cases.len() {
@@ -1487,18 +1483,10 @@ fn tir_laser(m: &mut Monde, pid: u32, cmd: &Value) -> Result<String, String> {
     if simples + militaires < 1.0 {
         return Err("Aucun laser en stock : fabriquez-en un (fabrique, niveau 3).".into());
     }
-    if p.laser_pret > m.temps {
-        return Err(format!("Le laser recharge encore {} s.", (p.laser_pret - m.temps).ceil()));
-    }
     let defenseur = m.cases[cible].proprio.ok_or("Visez une case ennemie.")?;
     if !hostile(m, pid, defenseur) {
         return Err("La cible doit appartenir à une nation en guerre avec vous.".into());
     }
-    let portee = if militaires >= 1.0 { PORTEE_LASER_MILITAIRE } else { PORTEE_LASER };
-    if !m.rayon(cible, portee).iter().any(|&v| m.cases[v].proprio == Some(pid)) {
-        return Err(format!("Hors de portée : le laser tire à {} cases de votre territoire.", portee));
-    }
-    m.pays.get_mut(&pid).unwrap().laser_pret = m.temps + RECHARGE_LASER;
     let nom_att = m.nom_pays(pid);
     if let Some(k) = m.bouclier_sur(cible, pid) {
         let b = m.boucliers.remove(k);
@@ -1506,14 +1494,23 @@ fn tir_laser(m: &mut Monde, pid: u32, cmd: &Value) -> Result<String, String> {
         m.evenement(Some(b.proprio), "victoire", format!("Votre bouclier d'énergie a arrêté un tir laser de {}. Il s'est effondré.", nom_att), Some(cible));
         return Ok("Le rayon s'écrase sur un bouclier d'énergie, qui s'effondre.".into());
     }
-    let puissance = (simples + 4.0 * militaires).min(40.0);
-    let victimes: Vec<u32> = m.armees.values().filter(|a| a.case == cible && a.proprio != pid).map(|a| a.id).collect();
-    let (_, pu) = blesser_armees(m, &victimes, 150.0 * puissance);
-    m.pays.get_mut(&pid).unwrap().stats.unites_detruites += pu;
-    reduire_batiment(m, cible, if militaires >= 1.0 { 2 } else { 1 });
-    m.effets.push(Effet { genre: "laser".into(), case: cible, rayon: 0 });
+    let puissance = simples + 4.0 * militaires;
+    // Centre : pleine puissance, batiment detruit ; voisines : moitie.
+    let mut pertes = 0.0;
+    for v in m.rayon(cible, 1) {
+        let centre = v == cible;
+        let victimes: Vec<u32> = m.armees.values().filter(|a| a.case == v && a.proprio != pid).map(|a| a.id).collect();
+        let (_, pu) = blesser_armees(m, &victimes, 600.0 * puissance * if centre { 1.0 } else { 0.5 });
+        pertes += pu;
+        if m.cases[v].proprio.map(|o| hostile(m, pid, o)).unwrap_or(false) {
+            let niv = if centre { 10 } else { (1.0 + puissance / 4.0).min(10.0) as u8 };
+            reduire_batiment(m, v, niv);
+        }
+    }
+    m.pays.get_mut(&pid).unwrap().stats.unites_detruites += pertes;
+    m.effets.push(Effet { genre: "laser".into(), case: cible, rayon: 1 });
     m.evenement(Some(defenseur), "alerte", format!("Tir laser de {} sur votre territoire !", nom_att), Some(cible));
-    Ok(format!("Tir laser réussi (puissance {}). Recharge : {} s.", puissance, RECHARGE_LASER))
+    Ok(format!("Tir laser réussi (puissance {}).", puissance))
 }
 
 /// Duree d'un bouclier d'energie deploye (s de jeu) et son rayon (cases).
@@ -3762,7 +3759,6 @@ fn rejoindre(m: &mut Monde, j: &Joueur, cmd: &Value, regles: &Regles) -> Result<
         troupes: 0.0,
         stock: Default::default(),
         fabrications: vec![],
-        laser_pret: 0.0,
     });
     if let Err(e) = installer_pays(m, pid, regles) {
         m.pays.remove(&pid);
@@ -4020,7 +4016,7 @@ mod tests_armes {
     }
 
     /// Les bombes a trou noir et a antimatiere exigent un missile non
-    /// conventionnel, consomme au tir ; le point zero part seul.
+    /// conventionnel, consomme au tir, comme le point zero.
     #[test]
     fn bombes_exigent_un_missile_non_conventionnel() {
         let (mut m, regles, j, a, d) = deux_en_guerre();
@@ -4036,7 +4032,9 @@ mod tests_armes {
         }
         fab::ajouter(&mut m.pays.get_mut(&a).unwrap().stock, "point_zero", 1.0);
         let cmd = json!({ "action": "arme_speciale", "objet": "point_zero", "cible": cible });
-        assert!(commande(&mut m, &j, &cmd, &regles).is_ok(), "le point zero se lance sans missile");
+        assert!(commande(&mut m, &j, &cmd, &regles).is_err(), "le point zero aussi exige un missile");
+        fab::ajouter(&mut m.pays.get_mut(&a).unwrap().stock, "missile_non_conventionnel", 1.0);
+        assert!(commande(&mut m, &j, &cmd, &regles).is_ok());
         assert_eq!(m.missiles.len(), 3);
     }
 
@@ -4085,25 +4083,21 @@ mod tests_armes {
         assert!(m.boucliers.is_empty(), "le bouclier s'effondre");
     }
 
-    /// Laser : tire sans s'user, mais doit recharger ; portee limitee.
+    /// Laser : sans limite de portee ni de recharge, il ne s'use pas.
     #[test]
-    fn laser_tire_puis_recharge() {
+    fn laser_sans_limite() {
         let (mut m, regles, j, a, d) = deux_en_guerre();
-        let cible = m.cases.iter().position(|c| c.proprio == Some(d)).unwrap();
+        // La case ennemie la plus eloignee du tireur.
+        let cible = (0..m.cases.len()).filter(|&i| m.cases[i].proprio == Some(d))
+            .max_by_key(|&i| m.distance(i, m.pays[&a].capitale)).unwrap();
         let cmd = json!({ "action": "tir_laser", "cible": cible });
         assert!(commande(&mut m, &j, &cmd, &regles).is_err(), "sans laser : refuse");
-        fab::ajouter(&mut m.pays.get_mut(&a).unwrap().stock, "laser_militaire", 1.0);
-        // Portee : la cible la plus proche du tireur.
-        let cible = (0..m.cases.len()).filter(|&i| m.cases[i].proprio == Some(d))
-            .min_by_key(|&i| (0..m.cases.len()).filter(|&k| m.cases[k].proprio == Some(a)).map(|k| m.distance(k, i)).min().unwrap()).unwrap();
-        let cmd = json!({ "action": "tir_laser", "cible": cible });
-        let pret = m.rayon(cible, PORTEE_LASER_MILITAIRE).iter().any(|&v| m.cases[v].proprio == Some(a));
-        assert_eq!(commande(&mut m, &j, &cmd, &regles).is_ok(), pret);
-        if pret {
-            assert!(commande(&mut m, &j, &cmd, &regles).is_err(), "recharge");
-            assert_eq!(fab::qte(&m.pays[&a].stock, "laser_militaire"), 1.0, "le laser ne s'use pas");
-            assert!(m.effets.iter().any(|e| e.genre == "laser"));
+        fab::ajouter(&mut m.pays.get_mut(&a).unwrap().stock, "laser", 1.0);
+        for _ in 0..3 {
+            assert!(commande(&mut m, &j, &cmd, &regles).is_ok(), "tirs a la suite, a toute distance");
         }
+        assert_eq!(fab::qte(&m.pays[&a].stock, "laser"), 1.0, "le laser ne s'use pas");
+        assert!(m.cases[cible].bat.is_none() || m.cases[cible].bat.as_deref() == Some("capitale"), "batiment detruit");
     }
 
     /// Les nations de l'ordinateur n'ont pas la protection des nouveaux venus.

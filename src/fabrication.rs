@@ -207,7 +207,7 @@ pub const PRODUITS: &[ProduitDef] = &[
     p("memoire", "Mémoire", 3, &[("circuit_imprime", 1.0), ("Si", 2.0), ("Ta", 1.0)], 2.0, 24.0, "memory", "Barrettes de mémoire."),
     p("moteur_electrique", "Moteur électrique", 3, &[("aimant", 2.0), ("cable_cuivre", 2.0), ("acier", 1.0)], 1.0, 24.0, "fan", "Silencieux et efficace."),
     p("module_radar", "Module radar", 3, &[("circuit_imprime", 2.0), ("Ga", 2.0), ("As", 1.0)], 1.0, 30.0, "satellite-dish", "Émetteur à l'arséniure de gallium."),
-    p("laser", "Laser", 3, &[("lentille", 1.0), ("Y", 1.0), ("Nd", 1.0), ("batterie", 1.0)], 1.0, 30.0, "wand-sparkles", "Laser Nd:YAG."),
+    p("laser", "Laser", 3, &[("lentille", 1.0), ("Y", 1.0), ("Nd", 1.0), ("batterie", 1.0)], 1.0, 30.0, "wand-sparkles", "Laser Nd:YAG. Permet le tir laser (menu d'une case ennemie) : sans limite de portée ni de recharge, plus fort avec chaque laser."),
     p("capteur", "Capteur", 3, &[("circuit_imprime", 1.0), ("Ge", 1.0), ("In", 1.0)], 2.0, 22.0, "eye", "Infrarouge et vision nocturne."),
     p("arme_legere", "Armes légères", 3, &[("acier", 2.0), ("munitions", 2.0), ("outil", 1.0)], 3.0, 24.0, "gun", "Fusils et mitrailleuses."),
     p("propergol", "Propergol", 3, &[("lingot_aluminium", 2.0), ("Cl", 1.0), ("ammoniac", 1.0)], 2.0, 24.0, "fire-flame-simple", "Carburant solide de fusée."),
@@ -242,7 +242,7 @@ pub const PRODUITS: &[ProduitDef] = &[
     p("ogive_h", "Ogive thermonucléaire", 5, &[("ogive_nucleaire", 1.0), ("Li", 4.0), ("H", 6.0)], 1.0, 150.0, "radiation", "Bombe H : la fission allume la fusion."),
     p("bouclier_antimissile", "Bouclier antimissile", 5, &[("module_radar", 4.0), ("guidage", 4.0), ("supercalculateur", 1.0)], 1.0, 140.0, "shield", "Détection et interception."),
     p("exosquelette", "Exosquelette", 5, &[("moteur_electrique", 4.0), ("composite_carbone", 3.0), ("batterie", 3.0), ("capteur", 2.0)], 1.0, 100.0, "person-rays", "Soldat augmenté."),
-    p("laser_militaire", "Laser militaire", 5, &[("laser", 4.0), ("supra_basique", 2.0), ("batterie", 4.0)], 1.0, 110.0, "wand-magic-sparkles", "Arme à énergie dirigée."),
+    p("laser_militaire", "Laser militaire", 5, &[("laser", 4.0), ("supra_basique", 2.0), ("batterie", 4.0)], 1.0, 110.0, "wand-magic-sparkles", "Arme à énergie dirigée : tir laser sans limite de portée ni de recharge, compte 4 lasers."),
     p("satellite_espion", "Satellite espion", 5, &[("satellite", 1.0), ("capteur", 4.0), ("lentille", 4.0)], 1.0, 120.0, "satellite", "Observation haute résolution."),
     p("lanceur", "Lanceur spatial", 5, &[("reacteur_fusee", 4.0), ("alliage_aero", 10.0), ("ordinateur", 2.0)], 1.0, 160.0, "shuttle-space", "Fusée orbitale."),
     p("aimant_supra", "Aimant supraconducteur", 5, &[("supra_basique", 4.0), ("He", 3.0), ("Nb", 2.0)], 1.0, 110.0, "magnet", "Champs magnétiques extrêmes."),
@@ -278,9 +278,9 @@ pub const PRODUITS: &[ProduitDef] = &[
     // Volontairement hors de portee : trois trous noirs, de la matiere
     // exotique et de l'antimatiere, et une heure de fabrique.
     p("bombe_trou_noir", "Bombe à trou noir", 8, &[("trou_noir", 3.0), ("matiere_exotique", 6.0), ("antimatiere", 6.0), ("confinement", 4.0), ("ia_superieure", 2.0)], 1.0, 3600.0, "circle", "L'arme finale, extrêmement difficile à obtenir : le trou noir avale tout dans un rayon de 3 cases (même votre territoire), ne disparaît jamais et grossit d'une case toutes les 5 minutes : son disque détruit la carte elle-même, ne laissant que le néant. Se lance depuis un silo sur un missile non conventionnel."),
-    p("missile_non_conventionnel", "Missile non conventionnel", 7, &[("reacteur_fusee", 2.0), ("guidage", 4.0), ("confinement", 1.0), ("blindage_composite", 4.0)], 1.0, 300.0, "rocket", "Vecteur blindé et confiné, seul capable de porter une bombe à antimatière ou à trou noir. Un missile par tir."),
+    p("missile_non_conventionnel", "Missile non conventionnel", 7, &[("reacteur_fusee", 2.0), ("guidage", 4.0), ("confinement", 1.0), ("blindage_composite", 4.0)], 1.0, 300.0, "rocket", "Vecteur blindé et confiné, seul capable de porter les armes plus puissantes que la bombe atomique (antimatière, trou noir, point zéro). Un missile par tir."),
     p("moteur_distorsion", "Moteur à distorsion", 8, &[("trou_noir", 1.0), ("moteur_antimatiere", 2.0)], 1.0, 800.0, "shuttle-space", "Voyager plus vite que la lumière."),
-    p("point_zero", "Générateur du point zéro", 8, &[("singularite", 1.0), ("bouclier_energie", 2.0)], 1.0, 800.0, "infinity", "Énergie tirée du vide. Se lance aussi depuis un silo : l'onde du point zéro rase bâtiments et armées dans un rayon de 2 cases, sans prendre le territoire."),
+    p("point_zero", "Générateur du point zéro", 8, &[("singularite", 1.0), ("bouclier_energie", 2.0)], 1.0, 800.0, "infinity", "Énergie tirée du vide. Se lance aussi depuis un silo, sur un missile non conventionnel : l'onde du point zéro rase bâtiments et armées dans un rayon de 2 cases, sans prendre le territoire."),
 ];
 
 

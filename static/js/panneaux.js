@@ -1170,7 +1170,7 @@ export function nomObjet(S, id) {
  *  partent sur un missile non conventionnel fabrique. */
 const ARMES_SPECIALES = ['bombe_antimatiere', 'bombe_trou_noir', 'point_zero'];
 const ICONES_ARMES = { bombe_antimatiere: 'explosion', bombe_trou_noir: 'circle', point_zero: 'infinity' };
-const exigeMissile = id => id === 'bombe_antimatiere' || id === 'bombe_trou_noir';
+const exigeMissile = id => ARMES_SPECIALES.includes(id);
 
 function possede(S, id) {
   const i = S.defs.index_minerais?.[id];
@@ -1666,9 +1666,9 @@ export function actionsRadiales(S, i) {
       }
       const lasers = possede(S, 'laser') + possede(S, 'laser_militaire');
       if (lasers >= 1) {
-        const recharge = m.laser_recharge || 0;
-        frappes.push({ ico: 'wand-magic-sparkles', label: 'Tir laser', act: 'laser_ici', data: { case: i }, danger: true, off: recharge > 0 || !guerre,
-          info: !guerre ? "Déclarez d'abord la guerre (Diplomatie)" : recharge > 0 ? `Recharge encore ${recharge} s` : `Instantané · portée ${possede(S, 'laser_militaire') >= 1 ? 8 : 4} cases de votre territoire` });
+        const puissance = possede(S, 'laser') + 4 * possede(S, 'laser_militaire');
+        frappes.push({ ico: 'wand-magic-sparkles', label: 'Tir laser', act: 'laser_ici', data: { case: i }, danger: true, off: !guerre,
+          info: !guerre ? "Déclarez d'abord la guerre (Diplomatie)" : `Instantané, sans limite · puissance ${fmt(Math.floor(puissance))}` });
       }
       if (!frappes.length) frappes.push({ ico: 'rocket', label: 'Aucun missile', info: 'Construisez un silo, puis produisez-y des missiles (Gérer le silo)', off: true });
       if (frappes.length) items.push(frappes.length === 1 ? frappes[0] : { ico: 'crosshairs', label: 'Frappes', sous: frappes, danger: true });

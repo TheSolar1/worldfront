@@ -804,7 +804,7 @@ function demarrerOrdreBouclier() {
 /** Texte de confirmation d'une arme speciale (bombes ou point zero). */
 function confirmerArme(objet, i, depuis) {
   const cible = S.pays.get(S.carte.proprio[i]);
-  const missile = objet === 'bombe_trou_noir' || objet === 'bombe_antimatiere' ? ' Un missile non conventionnel sera consommé.' : '';
+  const missile = ' Un missile non conventionnel sera consommé.';
   confirmer(`${ico('crosshairs')} Lancer : ${esc(nomObjet(S, objet).toLowerCase())} ?`,
     `Vous allez frapper <b>${esc(cible?.nom || 'cette zone')}</b>${depuis}. Seul un bouclier d'énergie peut l'arrêter.${missile} Cette décision est irréversible.`,
     'Lancer', () => agir('arme_speciale', { objet, cible: i }), true);
