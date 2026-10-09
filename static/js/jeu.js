@@ -127,6 +127,7 @@ function recevoirEtat(e) {
   S.missions = e.missions || [];
   S.missiles = e.missiles || [];
   S.attaques = e.attaques || [];
+  S.boucliers = e.boucliers || [];
   S.cours = e.cours || {};
   if (e.graine != null) {
     if (S.graine != null && e.graine !== S.graine) { location.reload(); return; }
@@ -769,8 +770,27 @@ function demarrerOrdreSpecial(objet) {
   S.carte.visee = true;
   S.carte.setZone(null);
   const c = $('#wf-consigne');
-  c.innerHTML = `${ico('crosshairs')} Choisissez la cible de la ${esc(nomObjet(S, objet).toLowerCase())} (portée illimitée, depuis votre silo). <button class="wf-lien" data-act="annuler_ordre">Annuler (Échap)</button>`;
+  c.innerHTML = `${ico('crosshairs')} Choisissez la cible : ${esc(nomObjet(S, objet).toLowerCase())} (portée illimitée, depuis votre silo). <button class="wf-lien" data-act="annuler_ordre">Annuler (Échap)</button>`;
   c.hidden = false;
+}
+
+/** Deploiement d'un bouclier d'energie : on choisit une de ses cases. */
+function demarrerOrdreBouclier() {
+  S.ordre = { type: 'bouclier' };
+  S.carte.visee = true;
+  S.carte.setZone(null);
+  const c = $('#wf-consigne');
+  c.innerHTML = `${ico('shield-heart')} Choisissez une de vos cases à protéger (rayon 2, 30 min). <button class="wf-lien" data-act="annuler_ordre">Annuler (Échap)</button>`;
+  c.hidden = false;
+}
+
+/** Texte de confirmation d'une arme speciale (bombes ou point zero). */
+function confirmerArme(objet, i, depuis) {
+  const cible = S.pays.get(S.carte.proprio[i]);
+  const missile = objet === 'bombe_trou_noir' || objet === 'bombe_antimatiere' ? ' Un missile non conventionnel sera consommé.' : '';
+  confirmer(`${ico('crosshairs')} Lancer : ${esc(nomObjet(S, objet).toLowerCase())} ?`,
+    `Vous allez frapper <b>${esc(cible?.nom || 'cette zone')}</b>${depuis}. Seul un bouclier d'énergie peut l'arrêter.${missile} Cette décision est irréversible.`,
+    'Lancer', () => agir('arme_speciale', { objet, cible: i }), true);
 }
 
 /** Fenetre de lancement nucleaire : charge (matiere brute ou ogives fabriquees). */
@@ -834,10 +854,12 @@ async function executerOrdre(i) {
   const o = S.ordre;
   if (o.type === 'special') {
     annulerOrdre();
-    const cible = S.pays.get(S.carte.proprio[i]);
-    confirmer(`${ico('circle')} Lancer la ${esc(nomObjet(S, o.objet).toLowerCase())} ?`,
-      `Vous allez frapper <b>${esc(cible?.nom || 'cette zone')}</b>. Rien ne peut l'intercepter. Cette décision est irréversible.`,
-      'Lancer', () => agir('arme_speciale', { objet: o.objet, cible: i }), true);
+    confirmerArme(o.objet, i, '');
+    return;
+  }
+  if (o.type === 'bouclier') {
+    annulerOrdre();
+    agir('bouclier_energie', { case: i });
     return;
   }
   const a = S.armees.find(x => x.id === o.armee);
@@ -962,12 +984,8 @@ const ACTIONS = {
     if (d.genre === 'missile_nucleaire') lancerNucleaire(a, d.genre, +d.case);
     else agir('missile', { armee: a.id, genre: d.genre, cible: +d.case });
   },
-  arme_ici: d => {
-    const cible = S.pays.get(S.carte.proprio[+d.case]);
-    confirmer(`${ico('circle')} Lancer la ${esc(nomObjet(S, d.objet).toLowerCase())} ?`,
-      `Vous allez frapper <b>${esc(cible?.nom || 'cette zone')}</b> depuis votre silo. Rien ne peut l'intercepter. Cette décision est irréversible.`,
-      'Lancer', () => agir('arme_speciale', { objet: d.objet, cible: +d.case }), true);
-  },
+  arme_ici: d => confirmerArme(d.objet, +d.case, ' depuis votre silo'),
+  bouclier_ici: d => agir('bouclier_energie', { case: +d.case }),
   rappeler: d => agir('rappeler', { id: +d.id }),
   fab_onglet: d => { S.fabOnglet = d.onglet; majPanneau(true); },
   fab_element: d => { S.qteRaf = Math.max(1, Math.min(1000, +val('qte-raf') || S.qteRaf || 10)); S.fabElement = d.objet; majPanneau(true); },
@@ -1025,6 +1043,7 @@ const ACTIONS = {
   annuler_fab: d => agir('annuler_fabrication', { id: +d.id }),
   vendre_objet: d => agir('vendre_objet', { objet: d.objet, qte: +d.qte || 1 }),
   ordre_special: d => demarrerOrdreSpecial(d.objet),
+  ordre_bouclier: () => demarrerOrdreBouclier(),
   acheter_plan: d => agir('acheter_plan', { plan: d.plan }),
   branche_plans: d => { S.branchePlans = d.branche; majPanneau(true); },
   reduire_insp: () => { S.inspReduit = !S.inspReduit; memoriserHud(); majInspecteur(true); },

@@ -695,6 +695,7 @@ export class Carte {
     for (const f of e.effets || []) this.effet(f.genre, f.case, f.rayon || 0);
     if (e.nuages) this.majNuages(e.nuages);
     if (e.trous_noirs) this.majTrousNoirs(e.trous_noirs);
+    if (e.boucliers) this.majBoucliers(e.boucliers);
     if (this.batsSales) {
       for (let i = 0; i < this.g.n; i++) if (this.bat[i]) this.majBatiment(i);
       this.batsSales = false;
@@ -847,6 +848,44 @@ export class Carte {
         o.g.traverse(c => { c.geometry?.dispose(); c.material?.dispose(); });
         this.trousVus.delete(id);
       }
+    }
+  }
+
+  /** Boucliers d'energie deployes : dome translucide qui pulse, a la taille
+   *  de leur rayon (2 cases). */
+  majBoucliers(liste) {
+    this.bouclVus ??= new Map();
+    const vus = new Set();
+    for (const b of liste) {
+      vus.add(b.id);
+      if (this.bouclVus.has(b.id)) continue;
+      const R = (b.rayon + 0.5) * 1.6;
+      const dome = new THREE.Mesh(new THREE.SphereGeometry(R, 40, 20, 0, Math.PI * 2, 0, Math.PI / 2),
+        new THREE.MeshBasicMaterial({ color: 0x40c4ff, transparent: true, opacity: 0.18, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, fog: false }));
+      const fil = new THREE.Mesh(new THREE.SphereGeometry(R * 1.001, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2),
+        new THREE.MeshBasicMaterial({ color: 0x80d8ff, wireframe: true, transparent: true, opacity: 0.25, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
+      dome.renderOrder = fil.renderOrder = 6;
+      const g = new THREE.Group();
+      g.add(dome, fil);
+      const [x, z] = this.pos(b.case);
+      g.position.set(x, this.haut(b.case), z);
+      this.groupes.effets.add(g);
+      this.bouclVus.set(b.id, { g, dome, fil });
+    }
+    for (const [id, o] of this.bouclVus) {
+      if (!vus.has(id)) {
+        this.groupes.effets.remove(o.g);
+        o.g.traverse(c => { c.geometry?.dispose(); c.material?.dispose(); });
+        this.bouclVus.delete(id);
+      }
+    }
+  }
+
+  animerBoucliers(t) {
+    if (!this.bouclVus) return;
+    for (const o of this.bouclVus.values()) {
+      o.dome.material.opacity = 0.14 + 0.06 * Math.sin(t / 1000 * 2.5);
+      o.fil.rotation.y = t / 1000 * 0.15;
     }
   }
 
@@ -1225,6 +1264,26 @@ export class Carte {
       debris(160, 0x80d8ff, 3 + R * 0.5, 2200, 0.16, 4, 700);
       // Vapeur au-dessus du cratere qui se remplit
       fumee(R * 0.5, 1.5, 4000, 1600, 0xb3e5fc);
+    } else if (genre === 'point_zero') {
+      // Onde du vide : point blanc, puis anneaux cyan et dores qui balaient
+      // la zone (le territoire reste, tout ce qui est dessus disparait).
+      const R = Math.max(2, (rayon || 2) * 1.6);
+      this.rappels.flash?.();
+      gonfle(boule(0xffffff, 1), 500, R * 0.35, 1, 0.6, 0, 0.3);
+      gonfle(boule(0x18ffff, 0.6), 1400, R * 1.1, 0.6, 0.3, 200, 0.5);
+      for (let k = 0; k < 4; k++) gonfle(anneau(k % 2 ? 0xffd740 : 0x18ffff, 0.9, 0.92), 1600, R * 1.3, 0.9, 0.15, k * 250, 0.6);
+      debris(120, 0xe0f7fa, 2 + R * 0.6, 1800, 0.14, 2);
+    } else if (genre === 'bouclier') {
+      const R = Math.max(2, (rayon || 2) + 0.5) * 1.6;
+      gonfle(boule(0x40c4ff, 0.5), 1200, R, 0.5, 0, 0, 0.5);
+      gonfle(anneau(0x80d8ff, 0.9, 0.9), 1200, R, 0.9, 0.1, 0, 0.5);
+    } else if (genre === 'bouclier_touche') {
+      // Le dome encaisse la frappe et vole en eclats.
+      const R = Math.max(2, (rayon || 2) + 0.5) * 1.6;
+      this.rappels.flash?.();
+      gonfle(boule(0xffffff, 0.9), 600, R * 0.5, 0.9, R * 0.9, 0, 0.3);
+      gonfle(boule(0x40c4ff, 0.7), 1400, R * 1.15, 0.7, 0, 0, 0.3);
+      debris(200, 0x80d8ff, 3 + R * 0.4, 2000, 0.16, 4);
     } else if (genre === 'interception') {
       gonfle(sphere(), 900, 1.3, 0.9, 5);
       gonfle(boule(0x40c4ff), 900, 1.3, 0.9, 5);
@@ -1435,6 +1494,7 @@ export class Carte {
       if (k >= 1) this.anim = null;
     }
     this.animerTrousNoirs(t);
+    this.animerBoucliers(t);
     if (this.deformation) {
       const k = (performance.now() - this.deformation.t0) / this.deformation.duree;
       if (k > 0) this.finirDeformation(Math.min(1, k));

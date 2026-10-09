@@ -1166,6 +1166,12 @@ export function nomObjet(S, id) {
 }
 
 /** Quantite possedee : les minerais sont des ressources de base, le reste est dans le stock. */
+/** Armes tirees depuis un silo (jeu.rs ARMES_SPECIALES) ; les bombes
+ *  partent sur un missile non conventionnel fabrique. */
+const ARMES_SPECIALES = ['bombe_antimatiere', 'bombe_trou_noir', 'point_zero'];
+const ICONES_ARMES = { bombe_antimatiere: 'explosion', bombe_trou_noir: 'circle', point_zero: 'infinity' };
+const exigeMissile = id => id === 'bombe_antimatiere' || id === 'bombe_trou_noir';
+
 function possede(S, id) {
   const i = S.defs.index_minerais?.[id];
   return i != null ? (S.moi?.res?.[i] || 0) : (S.moi?.stock?.[id] || 0);
@@ -1477,13 +1483,15 @@ function ongletProduits(S) {
   html += titre('Produits', 'boxes-stacked', `<small>${produits.length}</small>`);
   html += produits.length ? `<div class="wf-fab-cartes">${produits.map(p => {
     const n = possede(S, p.id);
-    const arme = ['bombe_trou_noir', 'bombe_antimatiere'].includes(p.id);
+    const arme = ARMES_SPECIALES.includes(p.id);
+    const sansMissile = exigeMissile(p.id) && possede(S, 'missile_non_conventionnel') < 1;
     return `<div class="wf-fab-carte">
       <div class="wf-fab-carte-tete">${blason(p, 42)}<div><b>${esc(p.nom)}</b><small>× ${fmt(n, 1)} · se vend ${fmt(prixCours(S, p.id))} ${ico('coins')} pièce</small></div></div>
       ${p.effet ? `<div class="wf-effet">${ico('star')} ${esc(p.effet.texte)}</div>` : ''}
       ${debloque(S, p.id).length ? `<div class="wf-effet">${ico('unlock')} Débloque : ${esc(debloque(S, p.id).join(', '))}</div>` : ''}
       <div class="wf-fab-carte-pied">
-        ${arme ? `<button class="wf-btn petit danger" data-act="ordre_special" data-objet="${p.id}">${ico('crosshairs')} Lancer</button>` : '<span></span>'}
+        ${arme ? `<button class="wf-btn petit danger" data-act="ordre_special" data-objet="${p.id}" ${sansMissile ? 'disabled title="Il faut un missile non conventionnel (fabrique, niveau 7)"' : ''}>${ico('crosshairs')} Lancer</button>`
+          : p.id === 'bouclier_energie' ? `<button class="wf-btn petit" data-act="ordre_bouclier">${ico('shield-heart')} Déployer</button>` : '<span></span>'}
         <span class="wf-boutons"><button class="wf-btn petit secondaire" data-act="vendre_objet" data-objet="${p.id}" data-qte="1">Vendre 1</button>
         ${n >= 2 ? `<button class="wf-btn petit secondaire" data-act="vendre_objet" data-objet="${p.id}" data-qte="${Math.floor(n)}">Tout</button>` : ''}</span>
       </div></div>`;
@@ -1574,6 +1582,12 @@ export function actionsRadiales(S, i) {
     }
   }
 
+  // Bouclier d'energie fabrique : on le deploie sur sa propre case.
+  if (vivant && pid === m.id && t.terre && possede(S, 'bouclier_energie') >= 1) {
+    const actif = (S.boucliers || []).some(b => b.proprio === m.id && b.case === i);
+    items.push({ ico: 'shield-heart', label: "Bouclier d'énergie", info: actif ? 'Déjà protégée' : `30 min, rayon 2 · ${fmt(possede(S, 'bouclier_energie'))} en stock`, act: 'bouclier_ici', data: { case: i }, off: actif });
+  }
+
   // Troupes : terre neutre ou ennemie en guerre qui touche votre territoire,
   // ou cote atteignable par bateau (comme le clic droit).
   if (vivant && t.terre && pid !== m.id) {
@@ -1622,9 +1636,14 @@ export function actionsRadiales(S, i) {
           frappes.push({ ico: u.icone, label: `Tirer : ${u.nom}`, info: `${n} en silo`, act: 'tirer_ici', data: { armee: a.id, genre: id, case: i }, danger: id === 'missile_nucleaire' });
         }
       }
-      for (const o of ['bombe_antimatiere', 'bombe_trou_noir']) {
+      const missiles = possede(S, 'missile_non_conventionnel');
+      for (const o of ARMES_SPECIALES) {
         const n = possede(S, o);
-        if (n >= 1) frappes.push({ ico: o === 'bombe_trou_noir' ? 'circle' : 'explosion', label: nomObjet(S, o), info: `${fmt(n)} en stock · depuis votre silo`, act: 'arme_ici', data: { objet: o, case: i }, danger: true });
+        if (n < 1) continue;
+        const manque = exigeMissile(o) && missiles < 1;
+        frappes.push({ ico: ICONES_ARMES[o], label: nomObjet(S, o),
+          info: manque ? 'Il faut un missile non conventionnel' : `${fmt(n)} en stock · depuis votre silo${exigeMissile(o) ? ` · ${fmt(missiles)} missile${missiles >= 2 ? 's' : ''}` : ''}`,
+          act: 'arme_ici', data: { objet: o, case: i }, danger: true, off: manque });
       }
       if (frappes.length) items.push(frappes.length === 1 ? frappes[0] : { ico: 'crosshairs', label: 'Frappes', sous: frappes, danger: true });
     }

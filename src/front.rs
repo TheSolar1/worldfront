@@ -115,6 +115,9 @@ pub fn etendre(m: &mut Monde, pid: u32, i: usize, ratio: f64, maint: i64) -> Res
     if cible == Some(pid) {
         return Err("Cette province est déjà à vous.".into());
     }
+    if cible.is_some() && m.bouclier_sur(i, pid).is_some() {
+        return Err("Un bouclier d'énergie protège cette zone : vos troupes ne peuvent pas y entrer.".into());
+    }
     if let Some(d) = cible {
         if !m.en_guerre(pid, d) {
             return Err(format!("Vous n'êtes pas en guerre contre {} : déclarez-lui la guerre d'abord (Diplomatie).", m.nom_pays(d)));
@@ -275,6 +278,7 @@ fn prochaine(m: &Monde, a: &Attaque) -> Option<usize> {
         .filter(|&i| {
             let c = &m.cases[i];
             c.proprio == a.cible && est_terre(c.terrain) && !m.zone_morte(i) && touche(m, a.de, i)
+                && (c.proprio.is_none() || m.bouclier_sur(i, a.de).is_none())
         })
         .min_by_key(|&i| (m.distance(i, a.vise), i))
 }

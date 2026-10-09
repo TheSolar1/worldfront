@@ -1418,11 +1418,21 @@ fn fabriquer(p: &mut Pays, b: &Bilan, dt: f64) -> Vec<String> {
     msgs
 }
 
-/// Bombe a trou noir ou a antimatiere, tiree depuis un silo (portee
-/// illimitee, impossible a intercepter).
+/// Armes que l'on tire depuis un silo avec la commande « arme_speciale ».
+pub const ARMES_SPECIALES: [&str; 3] = ["bombe_trou_noir", "bombe_antimatiere", "point_zero"];
+
+/// Les bombes a trou noir et a antimatiere ne partent que sur un missile
+/// non conventionnel (fabrique), consomme a chaque tir.
+pub fn exige_missile(objet: &str) -> bool {
+    matches!(objet, "bombe_trou_noir" | "bombe_antimatiere")
+}
+
+/// Bombe a trou noir, a antimatiere ou onde du point zero, tiree depuis un
+/// silo (portee illimitee, impossible a intercepter ; seul un bouclier
+/// d'energie l'arrete).
 fn arme_speciale(m: &mut Monde, pid: u32, cmd: &Value, regles: &Regles) -> Result<String, String> {
     let objet = s(cmd, "objet").to_string();
-    if !matches!(objet.as_str(), "bombe_trou_noir" | "bombe_antimatiere") {
+    if !ARMES_SPECIALES.contains(&objet.as_str()) {
         return Err("Arme inconnue.".into());
     }
     let cible = u(cmd, "cible").ok_or("Cible manquante.")? as usize;
@@ -1433,13 +1443,20 @@ fn arme_speciale(m: &mut Monde, pid: u32, cmd: &Value, regles: &Regles) -> Resul
         return Err("La cible doit appartenir à une nation en guerre avec vous.".into());
     }
     if fab::qte(&m.pays[&pid].stock, &objet) < 1.0 {
-        return Err(format!("Aucune {} en stock : fabriquez-en une.", fab::nom_objet(&objet).to_lowercase()));
+        return Err(format!("Aucun(e) {} en stock : fabriquez-en un(e).", fab::nom_objet(&objet).to_lowercase()));
+    }
+    if exige_missile(&objet) && fab::qte(&m.pays[&pid].stock, "missile_non_conventionnel") < 1.0 {
+        return Err("Il faut un missile non conventionnel pour porter cette bombe : fabriquez-en un (fabrique, niveau 7).".into());
     }
     let depart = (0..m.cases.len())
         .filter(|&i| m.cases[i].proprio == Some(pid) && m.cases[i].bat.as_deref() == Some("silo"))
         .min_by_key(|&i| m.distance(i, cible))
         .ok_or("Il faut un silo à missiles pour tirer.")?;
-    fab::ajouter(&mut m.pays.get_mut(&pid).unwrap().stock, &objet, -1.0);
+    let stock = &mut m.pays.get_mut(&pid).unwrap().stock;
+    fab::ajouter(stock, &objet, -1.0);
+    if exige_missile(&objet) {
+        fab::ajouter(stock, "missile_non_conventionnel", -1.0);
+    }
     let duree = (m.distance(depart, cible) as f64 / 12.0 * 60.0).max(10.0);
     let mid = m.nouvel_id();
     m.missiles.insert(mid, MissileVol {
@@ -1448,8 +1465,33 @@ fn arme_speciale(m: &mut Monde, pid: u32, cmd: &Value, regles: &Regles) -> Resul
     });
     let nom = m.nom_pays(pid);
     let quoi = fab::nom_objet(&objet);
-    m.evenement(None, "nucleaire", format!("ALERTE MONDIALE : {} a lancé une {} !", nom, quoi.to_lowercase()), Some(cible));
-    Ok(format!("{} lancée, impact dans {} s.", quoi, (duree / regles.vitesse).round()))
+    m.evenement(None, "nucleaire", format!("ALERTE MONDIALE : {} a lancé : {} !", nom, quoi.to_lowercase()), Some(cible));
+    Ok(format!("{} : lancement réussi, impact dans {} s.", quoi, (duree / regles.vitesse).round()))
+}
+
+/// Duree d'un bouclier d'energie deploye (s de jeu) et son rayon (cases).
+pub const DUREE_BOUCLIER: f64 = 1800.0;
+pub const RAYON_BOUCLIER: i64 = 2;
+
+/// Deploie un bouclier d'energie (consomme) sur une de ses cases.
+fn deployer_bouclier(m: &mut Monde, pid: u32, cmd: &Value) -> Result<String, String> {
+    let case = u(cmd, "case").ok_or("Case manquante.")? as usize;
+    if case >= m.cases.len() || m.cases[case].proprio != Some(pid) {
+        return Err("Déployez le bouclier sur une de vos cases.".into());
+    }
+    if fab::qte(&m.pays[&pid].stock, "bouclier_energie") < 1.0 {
+        return Err("Aucun bouclier d'énergie en stock : fabriquez-en un.".into());
+    }
+    if m.boucliers.iter().any(|b| b.proprio == pid && b.case == case && b.fin > m.temps) {
+        return Err("Un bouclier protège déjà cette case.".into());
+    }
+    fab::ajouter(&mut m.pays.get_mut(&pid).unwrap().stock, "bouclier_energie", -1.0);
+    let id = m.nouvel_id();
+    let fin = m.temps + DUREE_BOUCLIER;
+    m.boucliers.push(BouclierEnergie { id, proprio: pid, case, rayon: RAYON_BOUCLIER, fin });
+    m.effets.push(Effet { genre: "bouclier".into(), case, rayon: RAYON_BOUCLIER as u32 });
+    m.evenement(Some(pid), "construction", format!("Bouclier d'énergie déployé : {} cases de rayon pendant 30 min.", RAYON_BOUCLIER), Some(case));
+    Ok("Bouclier d'énergie déployé.".into())
 }
 
 /// Pertes de population et de troupes d'une frappe : proportionnelles a la
@@ -1478,8 +1520,38 @@ fn pertes_frappe(m: &mut Monde, zone: &[(usize, f64)]) -> f64 {
 /// Rayon (cases) du cratere creuse par l'antimatiere : il devient de la mer.
 pub const RAYON_CRATERE: i64 = 1;
 
-/// Impact d'une bombe a trou noir ou a antimatiere.
+/// Onde du point zero : rase batiments et armees dans un rayon de 2 cases,
+/// tue une partie de la population, mais ne prend pas le territoire.
+fn onde_point_zero(m: &mut Monde, pid: u32, cible: usize) {
+    let zone: Vec<(usize, f64)> = m.rayon(cible, 2).into_iter().map(|v| (v, 0.5)).collect();
+    let defenseur = m.cases[cible].proprio;
+    let morts = pertes_frappe(m, &zone);
+    for &(v, _) in &zone {
+        m.armees.retain(|_, a| a.case != v);
+        if m.cases[v].bat.as_deref() != Some("capitale") {
+            m.cases[v].bat = None;
+            m.cases[v].niv = 0;
+        }
+        if let Some(o) = m.cases[v].proprio {
+            if let Some(p) = m.pays.get_mut(&o) {
+                p.chantiers.retain(|x| x.case != v);
+                p.productions.retain(|x| x.case != v);
+            }
+        }
+        m.toucher(v);
+    }
+    m.effets.push(Effet { genre: "point_zero".into(), case: cible, rayon: 2 });
+    let nom_att = m.nom_pays(pid);
+    let cible_nom = defenseur.map(|d| m.nom_pays(d)).unwrap_or_else(|| "une zone neutre".into());
+    m.evenement(None, "nucleaire", format!("ONDE DU POINT ZÉRO sur {} (tirée par {}) : {} milliers de morts.", cible_nom, nom_att, morts.round()), Some(cible));
+}
+
+/// Impact d'une bombe a trou noir ou a antimatiere (ou du point zero).
 fn frappe_speciale(m: &mut Monde, pid: u32, genre: &str, cible: usize) {
+    if genre == "point_zero" {
+        onde_point_zero(m, pid, cible);
+        return;
+    }
     let trou_noir = genre == "bombe_trou_noir";
     let zone: Vec<(usize, f64)> = m.rayon(cible, 3).into_iter().map(|v| (v, if trou_noir { 0.98 } else { 0.9 })).collect();
     let defenseur = m.cases[cible].proprio;
@@ -1742,6 +1814,8 @@ pub fn tick(m: &mut Monde, dt: f64) -> HashMap<u32, Bilan> {
     missiles(m, dt, &mut rng);
     nuages(m, dt, &mut rng);
     trous_noirs(m, dt);
+    let t = m.temps;
+    m.boucliers.retain(|b| b.fin > t);
     inventions(m, &bl, dt, &mut rng);
     // ── Troupes et offensives (facon OpenFront) ──
     front::reserves(m, &bl, dt);
@@ -2179,7 +2253,17 @@ fn missiles(m: &mut Monde, dt: f64, rng: &mut impl Rng) {
         let cible = mv.cible;
         let nucleaire = mv.genre == "missile_nucleaire";
         let defenseur = m.cases[cible].proprio;
-        if mv.genre == "bombe_trou_noir" || mv.genre == "bombe_antimatiere" {
+        // Un bouclier d'energie arrete la frappe, quelle qu'elle soit, et
+        // s'effondre.
+        if let Some(k) = m.bouclier_sur(cible, pid) {
+            let b = m.boucliers.remove(k);
+            let quoi = unite(&mv.genre).map(|u| u.nom.to_string()).unwrap_or_else(|| fab::nom_objet(&mv.genre));
+            m.effets.push(Effet { genre: "bouclier_touche".into(), case: b.case, rayon: b.rayon as u32 });
+            m.evenement(Some(pid), "alerte", format!("{} arrêté(e) par un bouclier d'énergie.", quoi), Some(cible));
+            m.evenement(Some(b.proprio), "victoire", format!("Votre bouclier d'énergie a arrêté : {} ({}). Il s'est effondré.", quoi, m.nom_pays(pid)), Some(cible));
+            continue;
+        }
+        if ARMES_SPECIALES.contains(&mv.genre.as_str()) {
             frappe_speciale(m, pid, &mv.genre, cible);
             continue;
         }
@@ -2759,6 +2843,7 @@ pub fn commande(m: &mut Monde, j: &Joueur, cmd: &Value, regles: &Regles) -> Resu
         }
         "fabriquer_chaine" => fabriquer_chaine(m, pid, &b, cmd),
         "arme_speciale" => arme_speciale(m, pid, cmd, regles),
+        "bouclier_energie" => deployer_bouclier(m, pid, cmd),
 
         // ── Recherche ──
         "acheter_plan" => {
@@ -3868,6 +3953,87 @@ mod tests_armes {
         assert!(m.rayon(cible, 3).iter().all(|&v| m.cases[v].proprio != Some(pid)), "le tireur perd aussi sa terre");
         assert!(m.rayon(cible, RAYON_CRATERE).iter().all(|&v| m.cases[v].terrain == T_MER), "cratere inonde");
         assert!(m.effets.iter().any(|e| e.genre == "antimatiere" && e.rayon == 3));
+    }
+
+    /// Deux nations en guerre, la premiere avec un silo et des ressources.
+    fn deux_en_guerre() -> (Monde, Regles, Joueur<'static>, u32, u32) {
+        let regles = Regles { protection_s: 0, vitesse: 1.0 };
+        let mut m = Monde::generer(60, 40, 7);
+        crate::bots::assurer(&mut m, 2, &regles, 0.0);
+        let ids: Vec<u32> = m.pays.keys().copied().collect();
+        let (a, d) = (ids[0], ids[1]);
+        m.relations.insert(Monde::cle_rel(a, d), Relation { etat: Etat::Guerre, depuis: 0, jusqu: 0 });
+        let silo = m.voisins(m.pays[&a].capitale).into_iter().find(|&v| m.cases[v].proprio == Some(a)).unwrap();
+        m.cases[silo].bat = Some("silo".into());
+        m.cases[silo].niv = 1;
+        let j = Joueur { user_id: m.pays[&a].user_id, nom: "Test", admin: false, triche: false };
+        (m, regles, j, a, d)
+    }
+
+    /// Les bombes a trou noir et a antimatiere exigent un missile non
+    /// conventionnel, consomme au tir ; le point zero part seul.
+    #[test]
+    fn bombes_exigent_un_missile_non_conventionnel() {
+        let (mut m, regles, j, a, d) = deux_en_guerre();
+        let cible = m.pays[&d].capitale;
+        for o in ["bombe_trou_noir", "bombe_antimatiere"] {
+            fab::ajouter(&mut m.pays.get_mut(&a).unwrap().stock, o, 1.0);
+            let cmd = json!({ "action": "arme_speciale", "objet": o, "cible": cible });
+            assert!(commande(&mut m, &j, &cmd, &regles).is_err(), "{} sans missile : refuse", o);
+            fab::ajouter(&mut m.pays.get_mut(&a).unwrap().stock, "missile_non_conventionnel", 1.0);
+            assert!(commande(&mut m, &j, &cmd, &regles).is_ok(), "{} avec missile : accepte", o);
+            assert_eq!(fab::qte(&m.pays[&a].stock, "missile_non_conventionnel"), 0.0, "missile consomme");
+            assert_eq!(fab::qte(&m.pays[&a].stock, o), 0.0, "bombe consommee");
+        }
+        fab::ajouter(&mut m.pays.get_mut(&a).unwrap().stock, "point_zero", 1.0);
+        let cmd = json!({ "action": "arme_speciale", "objet": "point_zero", "cible": cible });
+        assert!(commande(&mut m, &j, &cmd, &regles).is_ok(), "le point zero se lance sans missile");
+        assert_eq!(m.missiles.len(), 3);
+    }
+
+    /// La bombe a trou noir est tres difficile a obtenir.
+    #[test]
+    fn bombe_trou_noir_tres_chere() {
+        let b = fab::produit("bombe_trou_noir").unwrap();
+        assert!(b.entrees.iter().any(|&(i, q)| i == "trou_noir" && q >= 3.0));
+        assert!(fab::prix_objet("bombe_trou_noir") > 5.0 * fab::prix_objet("bombe_antimatiere"));
+    }
+
+    /// Onde du point zero : batiments et armees rases, territoire conserve.
+    #[test]
+    fn point_zero_rase_sans_prendre() {
+        let (mut m, _, _, a, d) = deux_en_guerre();
+        let cible = m.pays[&d].capitale;
+        let avant: Vec<Option<u32>> = m.rayon(cible, 2).iter().map(|&v| m.cases[v].proprio).collect();
+        frappe_speciale(&mut m, a, "point_zero", cible);
+        let apres: Vec<Option<u32>> = m.rayon(cible, 2).iter().map(|&v| m.cases[v].proprio).collect();
+        assert_eq!(avant, apres, "le territoire ne change pas");
+        assert!(m.rayon(cible, 2).iter().all(|&v| m.cases[v].bat.is_none() || m.cases[v].bat.as_deref() == Some("capitale")));
+        assert!(m.armees.values().all(|x| m.distance(x.case, cible) > 2));
+        assert!(m.effets.iter().any(|e| e.genre == "point_zero"));
+    }
+
+    /// Bouclier d'energie : arrete la premiere frappe puis s'effondre, et
+    /// bloque les troupes ennemies.
+    #[test]
+    fn bouclier_energie_arrete_une_frappe() {
+        let (mut m, regles, j, a, d) = deux_en_guerre();
+        let cible = m.pays[&d].capitale;
+        let jd = Joueur { user_id: m.pays[&d].user_id, nom: "Def", admin: false, triche: false };
+        let cmd = json!({ "action": "bouclier_energie", "case": cible });
+        assert!(commande(&mut m, &jd, &cmd, &regles).is_err(), "sans bouclier en stock : refuse");
+        fab::ajouter(&mut m.pays.get_mut(&d).unwrap().stock, "bouclier_energie", 1.0);
+        assert!(commande(&mut m, &jd, &cmd, &regles).is_ok());
+        assert_eq!(m.boucliers.len(), 1);
+        assert!(front::etendre(&mut m, a, cible, 1.0, 0).is_err(), "troupes bloquees");
+        let st = &mut m.pays.get_mut(&a).unwrap().stock;
+        fab::ajouter(st, "bombe_antimatiere", 1.0);
+        fab::ajouter(st, "missile_non_conventionnel", 1.0);
+        commande(&mut m, &j, &json!({ "action": "arme_speciale", "objet": "bombe_antimatiere", "cible": cible }), &regles).unwrap();
+        let mut rng = rand::thread_rng();
+        missiles(&mut m, 1.0e6, &mut rng);
+        assert_eq!(m.cases[cible].proprio, Some(d), "la bombe est arretee");
+        assert!(m.boucliers.is_empty(), "le bouclier s'effondre");
     }
 
     /// Recette qui debloque un batiment : la centrale a fusion exige un

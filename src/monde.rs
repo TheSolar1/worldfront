@@ -260,6 +260,18 @@ pub struct TrouNoir {
     pub rayon: f64,
 }
 
+/// Bouclier d'energie deploye par un pays : arrete la premiere frappe qui
+/// vise sa zone et empeche les troupes ennemies d'y entrer, jusqu'a `fin`.
+#[derive(Serialize, Deserialize, Clone)]
+pub struct BouclierEnergie {
+    pub id: u32,
+    pub proprio: u32,
+    pub case: usize,
+    pub rayon: i64,
+    /// Temps de jeu (m.temps) ou il s'eteint.
+    pub fin: f64,
+}
+
 /// Effet visuel ponctuel (explosions...) diffuse une seule fois.
 #[derive(Serialize, Clone)]
 pub struct Effet {
@@ -295,6 +307,8 @@ pub struct Monde {
     pub nuages: Vec<Nuage>,
     #[serde(default)]
     pub trous_noirs: Vec<TrouNoir>,
+    #[serde(default)]
+    pub boucliers: Vec<BouclierEnergie>,
     #[serde(default)]
     pub attaques: BTreeMap<u32, Attaque>,
     /// Version des regles de la sauvegarde (migrations dans jeu::migrer).
@@ -366,6 +380,13 @@ impl Monde {
     /// Zone morte d'un trou noir : plus personne ne peut y vivre ni la prendre.
     pub fn zone_morte(&self, i: usize) -> bool {
         self.cases[i].irradiee > self.temps + 1.0e8
+    }
+
+    /// Bouclier d'energie actif d'un autre pays que `tireur` couvrant la case.
+    pub fn bouclier_sur(&self, i: usize, tireur: u32) -> Option<usize> {
+        self.boucliers
+            .iter()
+            .position(|b| b.proprio != tireur && b.fin > self.temps && self.distance(b.case, i) <= b.rayon)
     }
 
     pub fn est_cote(&self, i: usize) -> bool {
@@ -551,6 +572,7 @@ impl Monde {
             temps: 0.0,
             nuages: Vec::new(),
             trous_noirs: Vec::new(),
+            boucliers: Vec::new(),
             attaques: BTreeMap::new(),
             version: 4,
             bots_admin: None,
