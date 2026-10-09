@@ -366,14 +366,7 @@ function fermerRadial() {
 /** Angle du milieu du secteur k sur n (le premier en haut). */
 function angleSecteur(n, k) { return -Math.PI / 2 + (2 * Math.PI * (k + 0.5)) / n; }
 
-/** Secteur d'anneau entre les rayons r0..r1 et les angles a0..a1. */
-function arcSvg(r0, r1, a0, a1) {
-  const C = RAD.taille / 2, p = (r, a) => `${(C + r * Math.cos(a)).toFixed(2)},${(C + r * Math.sin(a)).toFixed(2)}`;
-  const grand = a1 - a0 > Math.PI ? 1 : 0;
-  return `M${p(r1, a0)} A${r1},${r1} 0 ${grand} 1 ${p(r1, a1)} L${p(r0, a1)} A${r0},${r0} 0 ${grand} 0 ${p(r0, a0)} Z`;
-}
-
-/** Un anneau : ses secteurs (SVG) et leurs icones (HTML par-dessus).
+/** Un anneau : ses boutons ronds (SVG) et leurs icones (HTML par-dessus).
  *  `centre` : angle autour duquel l'anneau exterieur se deploie. */
 function anneau(items, [r0, r1], niveau, centre, actif) {
   const n = items.length;
@@ -381,17 +374,17 @@ function anneau(items, [r0, r1], niveau, centre, actif) {
   // d'entrees, l'anneau complet sinon.
   const pas = niveau === 0 || n > 9 ? (2 * Math.PI) / n : Math.min(Math.PI / 4.2, (2 * Math.PI) / n);
   const debut = niveau === 0 || n > 9 ? -Math.PI / 2 : centre - (pas * n) / 2;
-  // Coins arrondis facon VEX : un trait epais et arrondi de la couleur du
-  // secteur, donc on retrecit le trace d'autant et on espace les secteurs.
-  const R = 5, ecart = Math.min(pas * 0.22, (R + 4) / r0);
+  const ecart = 0;
   const C = RAD.taille / 2, rm = (r0 + r1) / 2;
   let svg = '', html = '';
   items.forEach((it, k) => {
     const a0 = debut + k * pas + ecart, a1 = debut + (k + 1) * pas - ecart, am = (a0 + a1) / 2;
     const data = it.off ? '' : it.sous ? `data-rad="${niveau}.${k}"` : it.act ? `data-act="${it.act}" ${Object.entries(it.data || {}).map(([c, v]) => `data-${c}="${esc(String(v))}"`).join(' ')}` : '';
     const cls = `wf-rad-sec ${it.danger ? 'danger' : ''} ${it.off ? 'off' : ''} ${it.sous ? 'groupe' : ''} ${actif === k ? 'actif' : ''} ${it.qtes ? 'qtes' : ''}`;
-    svg += `<path class="${cls}" d="${arcSvg(r0 + R, r1 - R, a0, a1)}" data-n="${niveau}" data-k="${k}" ${data}/>`;
-    const t = Math.min(22, (r1 - r0) * 0.42, rm * (a1 - a0) * 0.55);
+    // Bouton rond au milieu de son secteur, aussi grand que la place le permet.
+    const rb = Math.max(14, Math.min((r1 - r0) / 2 - 2, rm * Math.sin(pas / 2) - 3));
+    svg += `<circle class="${cls}" cx="${(C + rm * Math.cos(am)).toFixed(1)}" cy="${(C + rm * Math.sin(am)).toFixed(1)}" r="${rb.toFixed(1)}" data-n="${niveau}" data-k="${k}" ${data}/>`;
+    const t = Math.min(22, rb * 0.82);
     html += `<span class="wf-rad-ic ${it.off ? 'off' : ''} ${it.danger ? 'danger' : ''} ${actif === k ? 'actif' : ''}" style="left:${(C + rm * Math.cos(am)).toFixed(1)}px;top:${(C + rm * Math.sin(am)).toFixed(1)}px;--t:${t.toFixed(1)}px">${ico(it.ico)}${it.sous ? '<b></b>' : ''}</span>`;
   });
   return { svg, html };

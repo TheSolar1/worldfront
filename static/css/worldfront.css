@@ -794,14 +794,14 @@ body[data-mode="dev"] .wf-apps-vex, body[data-mode="dev"] .wf-lien-vex { display
 .wf-radial { position: absolute; z-index: 40; width: 352px; height: 352px; transform: translate(-50%, -50%); pointer-events: none; }
 .wf-radial svg { position: absolute; inset: 0; overflow: visible; filter: drop-shadow(0 8px 18px rgba(0, 0, 0, .35)); }
 .wf-rad-sec {
-  --f: var(--surface);
-  pointer-events: auto; cursor: pointer; fill: var(--f); stroke: var(--f);
-  stroke-width: 10; stroke-linejoin: round; transition: fill .12s, stroke .12s;
+  pointer-events: auto; cursor: pointer; fill: var(--surface); stroke: var(--panel-border); stroke-width: 2;
+  transition: fill .12s, stroke .12s;
 }
-.wf-rad-sec:hover { --f: color-mix(in srgb, var(--accent) 22%, var(--surface)); }
-.wf-rad-sec.actif { --f: var(--accent); }
-.wf-rad-sec.danger:hover { --f: color-mix(in srgb, var(--danger, #dc2626) 22%, var(--surface)); }
-.wf-rad-sec.off { cursor: help; --f: color-mix(in srgb, var(--surface) 80%, var(--panel-border)); }
+.wf-rad-sec:hover { fill: color-mix(in srgb, var(--accent) 18%, var(--surface)); stroke: var(--accent); }
+.wf-rad-sec.actif { fill: var(--accent); stroke: var(--accent); }
+.wf-rad-sec.danger { stroke: color-mix(in srgb, var(--danger, #dc2626) 50%, var(--panel-border)); }
+.wf-rad-sec.danger:hover { fill: color-mix(in srgb, var(--danger, #dc2626) 18%, var(--surface)); stroke: var(--danger, #dc2626); }
+.wf-rad-sec.off { cursor: help; fill: color-mix(in srgb, var(--surface) 82%, var(--panel-border)); }
 .wf-rad-centre { pointer-events: auto; cursor: pointer; fill: var(--surface); stroke: var(--panel-border); stroke-width: 1.5; }
 .wf-rad-centre:hover { stroke: var(--accent); stroke-width: 2.5; }
 .wf-rad-ic { position: absolute; transform: translate(-50%, -50%); pointer-events: none; display: flex; }
