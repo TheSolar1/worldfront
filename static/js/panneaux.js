@@ -1727,7 +1727,7 @@ export function actionsRadiales(S, i) {
       }
       const lasers = possede(S, 'laser') + possede(S, 'laser_militaire');
       if (lasers >= 1) {
-        const puissance = possede(S, 'laser') + 4 * possede(S, 'laser_militaire');
+        const puissance = Math.min(20, possede(S, 'laser') + 4 * possede(S, 'laser_militaire'));
         frappes.push({ ico: 'wand-magic-sparkles', label: 'Tir laser', act: 'laser_ici', data: { case: i }, danger: true, off: !guerre,
           info: !guerre ? "Déclarez d'abord la guerre (Diplomatie)" : `Instantané, sans limite · puissance ${fmt(Math.floor(puissance))}` });
       }

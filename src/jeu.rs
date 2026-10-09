@@ -1474,7 +1474,8 @@ fn arme_speciale(m: &mut Monde, pid: u32, cmd: &Value, regles: &Regles) -> Resul
     if exige_missile(&objet) {
         fab::ajouter(stock, "missile_non_conventionnel", -1.0);
     }
-    let duree = (m.distance(depart, cible) as f64 / 12.0 * 60.0).max(10.0);
+    // ~1,25 s par case, 90 s au plus meme a l'autre bout de la carte.
+    let duree = (m.distance(depart, cible) as f64 * 1.25).clamp(5.0, 90.0);
     let mid = m.nouvel_id();
     m.missiles.insert(mid, MissileVol {
         id: mid, proprio: pid, genre: objet.clone(), depart, cible, progres: 0.0, duree,
@@ -1487,8 +1488,9 @@ fn arme_speciale(m: &mut Monde, pid: u32, cmd: &Value, regles: &Regles) -> Resul
 }
 
 /// Tir laser : instantane, sans silo, sans limite de portee ni de recharge.
-/// Les lasers ne s'usent pas. Plus on en a, plus le rayon frappe fort (le
-/// laser militaire compte 4) : il brule la case visee et ses voisines.
+/// Les lasers ne s'usent pas. Il touche une seule case : blesse les armees
+/// (plus fort avec plus de lasers, le militaire compte 4, plafond 20) et
+/// abime le batiment d'un niveau (deux avec un laser militaire).
 fn tir_laser(m: &mut Monde, pid: u32, cmd: &Value) -> Result<String, String> {
     let cible = u(cmd, "cible").ok_or("Cible manquante.")? as usize;
     if cible >= m.cases.len() {
@@ -1510,21 +1512,13 @@ fn tir_laser(m: &mut Monde, pid: u32, cmd: &Value) -> Result<String, String> {
         m.evenement(Some(b.proprio), "victoire", format!("Votre bouclier d'énergie a arrêté un tir laser de {}. Il s'est effondré.", nom_att), Some(cible));
         return Ok("Le rayon s'écrase sur un bouclier d'énergie, qui s'effondre.".into());
     }
-    let puissance = simples + 4.0 * militaires;
-    // Centre : pleine puissance, batiment detruit ; voisines : moitie.
-    let mut pertes = 0.0;
-    for v in m.rayon(cible, 1) {
-        let centre = v == cible;
-        let victimes: Vec<u32> = m.armees.values().filter(|a| a.case == v && a.proprio != pid).map(|a| a.id).collect();
-        let (_, pu) = blesser_armees(m, &victimes, 600.0 * puissance * if centre { 1.0 } else { 0.5 });
-        pertes += pu;
-        if m.cases[v].proprio.map(|o| hostile(m, pid, o)).unwrap_or(false) {
-            let niv = if centre { 10 } else { (1.0 + puissance / 4.0).min(10.0) as u8 };
-            reduire_batiment(m, v, niv);
-        }
-    }
+    // Une seule case touchee ; la puissance plafonne a 20 (5 lasers militaires).
+    let puissance = (simples + 4.0 * militaires).min(20.0);
+    let victimes: Vec<u32> = m.armees.values().filter(|a| a.case == cible && a.proprio != pid).map(|a| a.id).collect();
+    let (_, pertes) = blesser_armees(m, &victimes, 80.0 * puissance);
+    reduire_batiment(m, cible, if militaires >= 1.0 { 2 } else { 1 });
     m.pays.get_mut(&pid).unwrap().stats.unites_detruites += pertes;
-    m.effets.push(Effet { genre: "laser".into(), case: cible, rayon: 1 });
+    m.effets.push(Effet { genre: "laser".into(), case: cible, rayon: 0 });
     m.evenement(Some(defenseur), "alerte", format!("Tir laser de {} sur votre territoire !", nom_att), Some(cible));
     Ok(format!("Tir laser réussi (puissance {}).", puissance))
 }
@@ -3251,7 +3245,8 @@ pub fn commande(m: &mut Monde, j: &Joueur, cmd: &Value, regles: &Regles) -> Resu
             *a.unites.get_mut(&genre).unwrap() -= 1;
             a.unites.retain(|_, n| *n > 0);
             m.armees.retain(|_, a| !a.unites.is_empty());
-            let duree = (d.max(1.0) / ud.vitesse * 60.0).max(5.0);
+            // Quatre fois plus vite qu'avant, 60 s au plus.
+            let duree = (d.max(1.0) / ud.vitesse * 15.0).clamp(3.0, 60.0);
             let mid = m.nouvel_id();
             m.missiles.insert(mid, MissileVol { id: mid, proprio: pid, genre: genre.clone(), depart, cible, progres: 0.0, duree, matiere, explosifs, fissile });
             if let Some(p) = m.pays.get_mut(&pid) {
@@ -4112,7 +4107,7 @@ mod tests_armes {
             assert!(commande(&mut m, &j, &cmd, &regles).is_ok(), "tirs a la suite, a toute distance");
         }
         assert_eq!(fab::qte(&m.pays[&a].stock, "laser"), 1.0, "le laser ne s'use pas");
-        assert!(m.cases[cible].bat.is_none() || m.cases[cible].bat.as_deref() == Some("capitale"), "batiment detruit");
+
     }
 
     /// Les nations de l'ordinateur n'ont pas la protection des nouveaux venus.
