@@ -16,7 +16,10 @@ flock -n 9 || exit 0
 
 branche=$(git rev-parse --abbrev-ref HEAD)
 git fetch -q origin "$branche"
-[ "$(git rev-parse HEAD)" = "$(git rev-parse "origin/$branche")" ] && exit 0
+# Version reellement compilee et lancee (et non celle du code : un
+# « git pull » a la main ne doit pas faire croire que tout est a jour).
+installee=$(cat .maj-auto.version 2>/dev/null || true)
+[ "$installee" = "$(git rev-parse "origin/$branche")" ] && exit 0
 
 echo "$(date '+%F %T') nouvelle version sur $branche : $(git log -1 --format='%h %s' "origin/$branche")"
 git merge -q --ff-only "origin/$branche"
@@ -29,4 +32,5 @@ if [ -n "$PID" ]; then
 fi
 cp -f target/release/worldfront ./worldfront
 setsid nohup ./worldfront >> worldfront.out 2>&1 < /dev/null &
+git rev-parse HEAD > .maj-auto.version
 echo "$(date '+%F %T') WorldFront redemarre."

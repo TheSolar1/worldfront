@@ -4,3 +4,4 @@ config.json
 target-test/
 maj-auto.log
 .maj-auto.lock
+.maj-auto.version
