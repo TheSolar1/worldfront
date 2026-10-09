@@ -338,25 +338,18 @@ function clicCarte(i, e) {
 // Une entree avec sous-menu remplace le cercle ; le bouton central revient
 // en arriere ou ferme. Les entrees finales sont des boutons data-act :
 // le meme gestionnaire que le reste de l'interface les execute.
-let radial = null; // { i, pile: [entrees], x, y }
+let radial = null; // { i, pile: [{ titre, items }], x, y }
 
-/** Au-dela de 10 entrees, les boutons se chevauchent : les suivantes passent
- *  dans « Plus… » (recursif), et chaque sous-menu est decoupe pareil. */
-const RADIAL_MAX = 10;
-function paginer(items) {
-  items = items.map(it => it.sous ? { ...it, sous: paginer(it.sous) } : it);
-  if (items.length <= RADIAL_MAX) return items;
-  return [...items.slice(0, RADIAL_MAX - 1), { ico: 'ellipsis', label: 'Plus…', info: `${items.length - RADIAL_MAX + 1} autres`, sous: paginer(items.slice(RADIAL_MAX - 1)) }];
-}
-
+// Menu de case : une liste lisible (icone, nom, explication) pres du
+// curseur. Une entree `ouvert` montre ses sous-entrees directement (ex.
+// Produire sur un batiment) ; les autres groupes s'ouvrent en sous-liste
+// avec un bouton retour.
 function ouvrirRadial(i, e) {
-  const items = paginer(actionsRadiales(S, i));
-  // Seulement « Infos » : inutile d'ouvrir un cercle.
+  const items = actionsRadiales(S, i);
+  // Seulement « Infos » : inutile d'ouvrir un menu.
   if (items.length === 1) { choisirCase(i); return; }
   const r = $('#wf-carte').getBoundingClientRect();
-  const x = Math.max(130, Math.min(r.width - 130, e.clientX - r.left));
-  const y = Math.max(130, Math.min(r.height - 150, e.clientY - r.top));
-  radial = { i, pile: [items], x, y };
+  radial = { i, pile: [{ titre: null, items }], x: e.clientX - r.left, y: e.clientY - r.top };
   S.carte.selectionnerCase(i);
   dessinerRadial();
 }
@@ -368,53 +361,63 @@ function fermerRadial() {
   if (S.selCase == null) S.carte.selectionnerCase(null);
 }
 
+/** Une ligne du menu ; `chemin` repere l'entree pour ouvrir son groupe. */
+function ligneMenu(it, chemin) {
+  const cls = `wf-ctx-ligne ${it.danger ? 'danger' : ''} ${it.off ? 'off' : ''}`;
+  const data = it.sous ? `data-rad="${chemin}"` : it.act ? `data-act="${it.act}" ${Object.entries(it.data || {}).map(([c, v]) => `data-${c}="${esc(String(v))}"`).join(' ')}` : '';
+  const corps = `<span class="wf-ctx-ic">${ico(it.ico)}</span><span class="wf-ctx-txt"><b>${esc(it.label)}</b>${it.info ? `<small>${esc(it.info)}</small>` : ''}</span>`;
+  // Quantites rapides (produire x5, x10) a cote de l'action principale.
+  if (it.qtes && !it.off) {
+    const plus = it.qtes.map(q => `<button class="wf-ctx-qte" data-act="${it.act}" ${Object.entries({ ...it.data, qte: q }).map(([c, v]) => `data-${c}="${esc(String(v))}"`).join(' ')}>×${q}</button>`).join('');
+    return `<div class="wf-ctx-rang"><button class="${cls}" ${data}>${corps}</button>${plus}</div>`;
+  }
+  return `<button class="${cls}" ${data} ${it.off ? 'disabled' : ''}>${corps}${it.sous ? ico('chevron-right') : ''}</button>`;
+}
+
 function dessinerRadial() {
   const el = $('#wf-radial');
-  const items = radial.pile[radial.pile.length - 1];
-  const n = items.length;
-  const R = n <= 5 ? 74 : n <= 8 ? 92 : 112;
+  const niveau = radial.pile[radial.pile.length - 1];
   const p = S.carte.proprio[radial.i] >= 0 ? S.pays.get(S.carte.proprio[radial.i]) : null;
-  const titre = `${esc(nomCase(S, radial.i))}${p ? ` · ${esc(p.nom)}` : ''}`;
-  el.style.left = radial.x + 'px';
-  el.style.top = radial.y + 'px';
-  el.innerHTML = items.map((it, k) => {
-    const a = -Math.PI / 2 + (2 * Math.PI * k) / n;
-    const pos = `--dx:${(Math.cos(a) * R).toFixed(1)}px;--dy:${(Math.sin(a) * R).toFixed(1)}px;--k:${k}`;
-    const data = it.sous ? `data-rad="${k}"` : `data-act="${it.act}" ${Object.entries(it.data || {}).map(([c, v]) => `data-${c}="${esc(String(v))}"`).join(' ')}`;
-    return `<button class="wf-rad-btn ${it.danger ? 'danger' : ''} ${it.off ? 'off' : ''} ${it.sous ? 'groupe' : ''}" style="${pos}" ${data}
-      data-label="${esc(it.label)}" data-info="${esc(it.info || '')}" ${it.off ? 'disabled' : ''} aria-label="${esc(it.label)}">${ico(it.ico)}</button>`;
-  }).join('') + `<button class="wf-rad-centre" data-rad="retour" aria-label="${radial.pile.length > 1 ? 'Retour' : 'Fermer'}">${ico(radial.pile.length > 1 ? 'arrow-left' : 'xmark')}</button>
-    <div class="wf-rad-label" style="--r:${R}px"><b>${titre}</b><span></span></div>`;
+  const titre = niveau.titre ? esc(niveau.titre) : `${esc(nomCase(S, radial.i))}${p ? ` <small>${esc(p.nom)}</small>` : ''}`;
+  const corps = niveau.items.map((it, k) => it.ouvert && it.sous
+    ? `<div class="wf-ctx-section">${ico(it.ico)} ${esc(it.label)}${it.info ? ` <small>${esc(it.info)}</small>` : ''}</div>` + it.sous.map((x, j) => ligneMenu(x, `${k}.${j}`)).join('')
+    : ligneMenu(it, String(k))).join('');
+  el.innerHTML = `<div class="wf-ctx">
+    <div class="wf-ctx-tete">${radial.pile.length > 1 ? `<button class="wf-ctx-x" data-rad="retour" aria-label="Retour">${ico('arrow-left')}</button>` : ''}
+      <b>${titre}</b><button class="wf-ctx-x" data-rad="fermer" aria-label="Fermer">${ico('xmark')}</button></div>
+    <div class="wf-ctx-corps">${corps}</div></div>`;
   el.hidden = false;
-  // Rejoue l'animation d'ouverture
+  // Pres du curseur, sans deborder de la carte.
+  const r = $('#wf-carte').getBoundingClientRect();
+  const boite = el.firstElementChild;
+  const l = boite.offsetWidth, h = boite.offsetHeight;
+  el.style.left = Math.max(8, Math.min(r.width - l - 8, radial.x + 14)) + 'px';
+  el.style.top = Math.max(8, Math.min(r.height - h - 8, radial.y - 20)) + 'px';
   el.classList.remove('ouvert'); void el.offsetWidth; el.classList.add('ouvert');
 }
 
 function initRadial() {
   const el = $('#wf-radial');
-  const label = () => el.querySelector('.wf-rad-label');
-  el.addEventListener('mouseover', e => {
-    const b = e.target.closest('.wf-rad-btn');
-    const l = label();
-    if (!l) return;
-    if (!b) { l.querySelector('span').textContent = ''; return; }
-    l.querySelector('span').innerHTML = `${esc(b.dataset.label)}${b.dataset.info ? `<small>${esc(b.dataset.info)}</small>` : ''}`;
-  });
   el.addEventListener('click', e => {
     const b = e.target.closest('button');
     if (!b || !radial) return;
+    if (b.dataset.rad === 'fermer') { fermerRadial(); return; }
     if (b.dataset.rad === 'retour') {
       if (radial.pile.length > 1) { radial.pile.pop(); dessinerRadial(); } else fermerRadial();
       return;
     }
     if (b.dataset.rad != null) {
-      const it = radial.pile[radial.pile.length - 1][+b.dataset.rad];
-      radial.pile.push(it.sous);
+      let it = null, liste = radial.pile[radial.pile.length - 1].items;
+      for (const k of b.dataset.rad.split('.')) { it = liste[+k]; liste = it.sous; }
+      radial.pile.push({ titre: it.label, items: it.sous });
       dessinerRadial();
       return;
     }
-    // Action finale : executee par le gestionnaire global (data-act), puis on ferme.
-    if (b.dataset.act) setTimeout(fermerRadial, 0);
+    // Action finale : executee par le gestionnaire global (data-act), puis on
+    // ferme. Produire laisse le menu ouvert pour enchainer les commandes.
+    if (b.dataset.act === 'produire') {
+      setTimeout(() => { if (radial && radial.pile.length === 1) { radial.pile[0].items = actionsRadiales(S, radial.i); dessinerRadial(); } }, 700);
+    } else if (b.dataset.act) setTimeout(fermerRadial, 0);
   });
   // Molette ou glisser sur la carte : le menu ne suit pas la camera, on le ferme.
   $('#wf-carte').addEventListener('wheel', fermerRadial, { passive: true });
@@ -1119,7 +1122,7 @@ const ACTIONS = {
   rechercher: d => agir('rechercher', { tech: d.tech }),
   annuler_recherche: d => agir('annuler_recherche', { tech: d.tech }),
   branche: d => { S.brancheRecherche = d.branche; majPanneau(true); majInspecteur(true); },
-  produire: d => agir('produire', { case: +d.case, unite: d.unite, qte: Math.max(1, Math.min(50, +val(d.champ || 'qte-' + d.unite) || 1)) }),
+  produire: d => agir('produire', { case: +d.case, unite: d.unite, qte: Math.max(1, Math.min(50, +d.qte || +val(d.champ || 'qte-' + d.unite) || 1)) }),
   annuler_production: d => agir('annuler_production', { id: +d.id }),
   prod_case: d => { S.prodCase = +d.case; majPanneau(true); },
 

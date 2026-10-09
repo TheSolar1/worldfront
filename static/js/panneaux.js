@@ -1557,10 +1557,10 @@ function menuProduire(S, i, b) {
   const unites = S.defs.unites.filter(u => u.batiment === b);
   if (!unites.length) return null;
   const file = m.productions.filter(p => p.case === i).length;
-  return { ico: 'person-military-rifle', label: 'Produire', info: file ? `${file} commande(s) en cours` : `${unites.length} unités`, sous: unites.map(u => {
+  return { ico: 'person-military-rifle', label: 'Produire', ouvert: true, info: file ? `${file} commande(s) en cours` : '', sous: unites.map(u => {
     const c = coutUnite(u, 1, m.mods, m.spe);
     const raison = u.tech && !aTech(S, u.tech) ? 'Technologie : ' + nomTech(S, u.tech) : manqueProduit(S, u);
-    return { ico: u.icone, label: u.nom, info: raison || coutTexte(S, c), act: 'produire', data: { case: i, unite: u.id }, off: !!raison || !peutPayer(S, c) };
+    return { ico: u.icone, label: u.nom, info: raison || coutTexte(S, c), act: 'produire', data: { case: i, unite: u.id, qte: 1 }, qtes: [5, 10], off: !!raison || !peutPayer(S, c) };
   }) };
 }
 
@@ -1621,13 +1621,13 @@ export function actionsRadiales(S, i) {
     } else {
       const d = batDef(S, b);
       const niv = S.carte.niv[i];
+      const prod = menuProduire(S, i, b);
+      if (prod) items.push(prod);
       if (niv < m.mods.niv_max) {
         const c = coutBatiment(d, niv + 1, m.mods, m.spe);
         const exige = manqueProduit(S, d);
         items.push({ ico: 'arrow-up', label: `Améliorer (niveau ${niv + 1})`, info: exige || coutTexte(S, c), act: 'ameliorer', data: { case: i }, off: !peutPayer(S, c) || !!exige });
       }
-      const prod = menuProduire(S, i, b);
-      if (prod) items.push(prod);
       if (b === 'silo') items.push(menuSilo(S, i));
       items.push(protection(S, i));
       items.push({ ico: 'sliders', label: `Gérer : ${d?.nom || b}`, info: 'Production, recherche, détails', act: 'infos_case', data: { case: i } });
