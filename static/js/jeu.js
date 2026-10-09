@@ -341,7 +341,7 @@ function clicCarte(i, e) {
 // Les secteurs finaux portent data-act : le gestionnaire global les execute.
 let radial = null; // { i, pile: [{ titre, items, angle }], x, y, survol }
 
-const RAD = { c: 40, r1: [46, 104], r2: [110, 170], taille: 352 };
+const RAD = { c: 42, r1: [46, 114], r2: [116, 186], taille: 384 };
 
 function ouvrirRadial(i, e) {
   const items = actionsRadiales(S, i);
@@ -366,6 +366,14 @@ function fermerRadial() {
 /** Angle du milieu du secteur k sur n (le premier en haut). */
 function angleSecteur(n, k) { return -Math.PI / 2 + (2 * Math.PI * (k + 0.5)) / n; }
 
+/** Part d'anneau entre les rayons r0..r1 et les angles a0..a1 : la zone
+ *  cliquable de chaque bouton (invisible), plus grande que le rond. */
+function arcSvg(r0, r1, a0, a1) {
+  const C = RAD.taille / 2, p = (r, a) => `${(C + r * Math.cos(a)).toFixed(2)},${(C + r * Math.sin(a)).toFixed(2)}`;
+  const grand = a1 - a0 > Math.PI ? 1 : 0;
+  return `M${p(r1, a0)} A${r1},${r1} 0 ${grand} 1 ${p(r1, a1)} L${p(r0, a1)} A${r0},${r0} 0 ${grand} 0 ${p(r0, a0)} Z`;
+}
+
 /** Un anneau : ses boutons ronds (SVG) et leurs icones (HTML par-dessus).
  *  `centre` : angle autour duquel l'anneau exterieur se deploie. */
 function anneau(items, [r0, r1], niveau, centre, actif) {
@@ -383,7 +391,9 @@ function anneau(items, [r0, r1], niveau, centre, actif) {
     const cls = `wf-rad-sec ${it.danger ? 'danger' : ''} ${it.off ? 'off' : ''} ${it.sous ? 'groupe' : ''} ${actif === k ? 'actif' : ''} ${it.qtes ? 'qtes' : ''}`;
     // Bouton rond au milieu de son secteur, aussi grand que la place le permet.
     const rb = Math.max(14, Math.min((r1 - r0) / 2 - 2, rm * Math.sin(pas / 2) - 3));
-    svg += `<circle class="${cls}" cx="${(C + rm * Math.cos(am)).toFixed(1)}" cy="${(C + rm * Math.sin(am)).toFixed(1)}" r="${rb.toFixed(1)}" data-n="${niveau}" data-k="${k}" ${data}/>`;
+    // Le groupe porte l'action : toute la part d'anneau est cliquable.
+    svg += `<g class="wf-rad-g" data-n="${niveau}" data-k="${k}" ${data}><path class="wf-rad-zone" d="${arcSvg(r0, r1, a0, a1)}"/>
+      <circle class="${cls}" cx="${(C + rm * Math.cos(am)).toFixed(1)}" cy="${(C + rm * Math.sin(am)).toFixed(1)}" r="${rb.toFixed(1)}"/></g>`;
     const t = Math.min(22, rb * 0.82);
     html += `<span class="wf-rad-ic ${it.off ? 'off' : ''} ${it.danger ? 'danger' : ''} ${actif === k ? 'actif' : ''}" style="left:${(C + rm * Math.cos(am)).toFixed(1)}px;top:${(C + rm * Math.sin(am)).toFixed(1)}px;--t:${t.toFixed(1)}px">${ico(it.ico)}${it.sous ? '<b></b>' : ''}</span>`;
   });
@@ -435,7 +445,7 @@ function entreeRadial(sec) {
 function initRadial() {
   const el = $('#wf-radial');
   el.addEventListener('mouseover', e => {
-    const sec = e.target.closest('.wf-rad-sec');
+    const sec = e.target.closest('.wf-rad-g');
     if (!radial) return;
     etiquetteRadial(sec ? entreeRadial(sec) : null);
   });
