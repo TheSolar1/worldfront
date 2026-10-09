@@ -31,6 +31,7 @@ if [ -n "$PID" ]; then
   while kill -0 $PID 2>/dev/null; do sleep 0.5; done
 fi
 cp -f target/release/worldfront ./worldfront
-setsid nohup ./worldfront >> worldfront.out 2>&1 < /dev/null &
+# 9>&- : le jeu ne doit pas garder le verrou, sinon plus aucune mise a jour.
+setsid nohup ./worldfront >> worldfront.out 2>&1 < /dev/null 9>&- &
 git rev-parse HEAD > .maj-auto.version
 echo "$(date '+%F %T') WorldFront redemarre."
