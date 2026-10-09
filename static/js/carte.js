@@ -1273,6 +1273,18 @@ export class Carte {
       gonfle(boule(0x18ffff, 0.6), 1400, R * 1.1, 0.6, 0.3, 200, 0.5);
       for (let k = 0; k < 4; k++) gonfle(anneau(k % 2 ? 0xffd740 : 0x18ffff, 0.9, 0.92), 1600, R * 1.3, 0.9, 0.15, k * 250, 0.6);
       debris(120, 0xe0f7fa, 2 + R * 0.6, 1800, 0.14, 2);
+    } else if (genre === 'laser') {
+      // Rayon rouge tombe du ciel, impact incandescent.
+      const H = 14;
+      const rayon = new T.Mesh(new T.CylinderGeometry(0.06, 0.06, H, 10, 1, true), mat(0xff1744, 1));
+      rayon.position.set(x, y + H / 2, z);
+      anim(rayon, 900, k => { const l = k < 0.15 ? k / 0.15 : 1; rayon.scale.set(1 + 2 * (1 - k), l, 1 + 2 * (1 - k)); rayon.material.opacity = k < 0.7 ? 1 : (1 - k) / 0.3; });
+      const halo = new T.Mesh(new T.CylinderGeometry(0.22, 0.22, H, 10, 1, true), mat(0xff8a80, 0.4));
+      halo.position.set(x, y + H / 2, z);
+      anim(halo, 900, k => { halo.material.opacity = 0.4 * (1 - k); });
+      gonfle(boule(0xffffff, 1), 400, 0.5, 1, 0.2, 100, 0.3);
+      gonfle(boule(0xff5252, 0.9), 900, 1.1, 0.9, 0.2, 120, 0.4);
+      debris(40, 0xffab91, 2.5, 1000, 0.1, 5, 120);
     } else if (genre === 'bouclier') {
       const R = Math.max(2, (rayon || 2) + 0.5) * 1.6;
       gonfle(boule(0x40c4ff, 0.5), 1200, R, 0.5, 0, 0, 0.5);

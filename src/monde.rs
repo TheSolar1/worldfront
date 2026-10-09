@@ -99,9 +99,17 @@ pub struct Pays {
     pub stock: crate::fabrication::Stock,
     #[serde(default)]
     pub fabrications: Vec<crate::fabrication::Fabrication>,
+    /// Temps de jeu (m.temps) a partir duquel le laser peut retirer.
+    #[serde(default)]
+    pub laser_pret: f64,
 }
 
 impl Pays {
+    /// Protection des nouveaux venus : seulement pour les joueurs humains
+    /// (les nations de l'ordinateur peuvent etre attaquees tout de suite).
+    pub fn protege(&self, maint: i64) -> bool {
+        self.protection > maint && !crate::bots::est_bot(self.user_id)
+    }
     pub fn a(&self, tech: &str) -> bool {
         self.techs.iter().any(|t| t == tech)
     }

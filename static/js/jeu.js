@@ -412,9 +412,10 @@ function initRadial() {
 }
 
 
-// Clic droit : avec une armee selectionnee, l'ordre habituel ; sinon on
-// envoie une part des troupes sur la case (facon OpenFront).
-function clicDroitCarte(i) {
+// Clic droit : avec une armee selectionnee, l'ordre habituel ; sur sa
+// propre case, on ameliore le batiment (ou on ouvre le menu pour
+// construire) ; sinon on envoie une part des troupes (facon OpenFront).
+function clicDroitCarte(i, e) {
   if (i < 0) return;
   fermerRadial();
   if (S.ordre) { annulerOrdre(); return; }
@@ -424,7 +425,14 @@ function clicDroitCarte(i) {
     else if (a.dom === 'air') demarrerOrdre('mission', a);
     return;
   }
-  if (S.moi && !S.moi.elimine) envoyerTroupes(i);
+  if (!S.moi || S.moi.elimine) return;
+  if (S.carte.proprio[i] === S.moi.id) {
+    const chantier = S.moi.chantiers.some(c => c.case === i);
+    if (S.carte.bat[i] && !chantier) agir('ameliorer', { case: i });
+    else if (e) { choisirCase(null); ouvrirRadial(i, e); }
+    return;
+  }
+  envoyerTroupes(i);
 }
 
 function envoyerTroupes(i) {
@@ -986,6 +994,14 @@ const ACTIONS = {
   },
   arme_ici: d => confirmerArme(d.objet, +d.case, ' depuis votre silo'),
   bouclier_ici: d => agir('bouclier_energie', { case: +d.case }),
+  laser_ici: d => agir('tir_laser', { cible: +d.case }),
+  deplacer_ici: d => agir('deplacer', { armee: +d.armee, cible: +d.case }),
+  deplacer_toutes: async d => {
+    const liste = S.armees.filter(a => a.proprio === S.moi.id && a.dom === d.dom && a.case !== +d.case);
+    let ok = 0;
+    for (const a of liste) if ((await agir('deplacer', { armee: a.id, cible: +d.case }, true)).ok) ok++;
+    toast(`${ok} armée${ok > 1 ? 's' : ''} en route.`, ok ? 'ok' : 'err');
+  },
   rappeler: d => agir('rappeler', { id: +d.id }),
   fab_onglet: d => { S.fabOnglet = d.onglet; majPanneau(true); },
   fab_element: d => { S.qteRaf = Math.max(1, Math.min(1000, +val('qte-raf') || S.qteRaf || 10)); S.fabElement = d.objet; majPanneau(true); },

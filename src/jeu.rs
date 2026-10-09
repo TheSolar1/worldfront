@@ -1469,6 +1469,53 @@ fn arme_speciale(m: &mut Monde, pid: u32, cmd: &Value, regles: &Regles) -> Resul
     Ok(format!("{} : lancement réussi, impact dans {} s.", quoi, (duree / regles.vitesse).round()))
 }
 
+/// Portee du laser (cases depuis son territoire) et delai entre deux tirs (s).
+pub const PORTEE_LASER: i64 = 4;
+pub const PORTEE_LASER_MILITAIRE: i64 = 8;
+pub const RECHARGE_LASER: f64 = 60.0;
+
+/// Tir laser : instantane, sans silo, depuis n'importe quelle case de son
+/// territoire a portee. Les lasers ne s'usent pas mais doivent recharger.
+/// Plus on en a, plus le rayon frappe fort (le laser militaire compte 4).
+fn tir_laser(m: &mut Monde, pid: u32, cmd: &Value) -> Result<String, String> {
+    let cible = u(cmd, "cible").ok_or("Cible manquante.")? as usize;
+    if cible >= m.cases.len() {
+        return Err("Cible invalide.".into());
+    }
+    let p = &m.pays[&pid];
+    let (simples, militaires) = (fab::qte(&p.stock, "laser").floor(), fab::qte(&p.stock, "laser_militaire").floor());
+    if simples + militaires < 1.0 {
+        return Err("Aucun laser en stock : fabriquez-en un (fabrique, niveau 3).".into());
+    }
+    if p.laser_pret > m.temps {
+        return Err(format!("Le laser recharge encore {} s.", (p.laser_pret - m.temps).ceil()));
+    }
+    let defenseur = m.cases[cible].proprio.ok_or("Visez une case ennemie.")?;
+    if !hostile(m, pid, defenseur) {
+        return Err("La cible doit appartenir à une nation en guerre avec vous.".into());
+    }
+    let portee = if militaires >= 1.0 { PORTEE_LASER_MILITAIRE } else { PORTEE_LASER };
+    if !m.rayon(cible, portee).iter().any(|&v| m.cases[v].proprio == Some(pid)) {
+        return Err(format!("Hors de portée : le laser tire à {} cases de votre territoire.", portee));
+    }
+    m.pays.get_mut(&pid).unwrap().laser_pret = m.temps + RECHARGE_LASER;
+    let nom_att = m.nom_pays(pid);
+    if let Some(k) = m.bouclier_sur(cible, pid) {
+        let b = m.boucliers.remove(k);
+        m.effets.push(Effet { genre: "bouclier_touche".into(), case: b.case, rayon: b.rayon as u32 });
+        m.evenement(Some(b.proprio), "victoire", format!("Votre bouclier d'énergie a arrêté un tir laser de {}. Il s'est effondré.", nom_att), Some(cible));
+        return Ok("Le rayon s'écrase sur un bouclier d'énergie, qui s'effondre.".into());
+    }
+    let puissance = (simples + 4.0 * militaires).min(40.0);
+    let victimes: Vec<u32> = m.armees.values().filter(|a| a.case == cible && a.proprio != pid).map(|a| a.id).collect();
+    let (_, pu) = blesser_armees(m, &victimes, 150.0 * puissance);
+    m.pays.get_mut(&pid).unwrap().stats.unites_detruites += pu;
+    reduire_batiment(m, cible, if militaires >= 1.0 { 2 } else { 1 });
+    m.effets.push(Effet { genre: "laser".into(), case: cible, rayon: 0 });
+    m.evenement(Some(defenseur), "alerte", format!("Tir laser de {} sur votre territoire !", nom_att), Some(cible));
+    Ok(format!("Tir laser réussi (puissance {}). Recharge : {} s.", puissance, RECHARGE_LASER))
+}
+
 /// Duree d'un bouclier d'energie deploye (s de jeu) et son rayon (cases).
 pub const DUREE_BOUCLIER: f64 = 1800.0;
 pub const RAYON_BOUCLIER: i64 = 2;
@@ -2844,6 +2891,7 @@ pub fn commande(m: &mut Monde, j: &Joueur, cmd: &Value, regles: &Regles) -> Resu
         "fabriquer_chaine" => fabriquer_chaine(m, pid, &b, cmd),
         "arme_speciale" => arme_speciale(m, pid, cmd, regles),
         "bouclier_energie" => deployer_bouclier(m, pid, cmd),
+        "tir_laser" => tir_laser(m, pid, cmd),
 
         // ── Recherche ──
         "acheter_plan" => {
@@ -3714,6 +3762,7 @@ fn rejoindre(m: &mut Monde, j: &Joueur, cmd: &Value, regles: &Regles) -> Result<
         troupes: 0.0,
         stock: Default::default(),
         fabrications: vec![],
+        laser_pret: 0.0,
     });
     if let Err(e) = installer_pays(m, pid, regles) {
         m.pays.remove(&pid);
@@ -3737,7 +3786,7 @@ fn declarer_guerre(m: &mut Monde, pid: u32, cible: u32) -> Result<String, String
     if m.en_guerre(pid, cible) {
         return Err("Vous êtes déjà en guerre.".into());
     }
-    if pc.protection > maint {
+    if pc.protege(maint) {
         return Err(format!(
             "Cette nation est sous protection des nouveaux venus encore {} min.",
             (pc.protection - maint) / 60 + 1
@@ -4034,6 +4083,40 @@ mod tests_armes {
         missiles(&mut m, 1.0e6, &mut rng);
         assert_eq!(m.cases[cible].proprio, Some(d), "la bombe est arretee");
         assert!(m.boucliers.is_empty(), "le bouclier s'effondre");
+    }
+
+    /// Laser : tire sans s'user, mais doit recharger ; portee limitee.
+    #[test]
+    fn laser_tire_puis_recharge() {
+        let (mut m, regles, j, a, d) = deux_en_guerre();
+        let cible = m.cases.iter().position(|c| c.proprio == Some(d)).unwrap();
+        let cmd = json!({ "action": "tir_laser", "cible": cible });
+        assert!(commande(&mut m, &j, &cmd, &regles).is_err(), "sans laser : refuse");
+        fab::ajouter(&mut m.pays.get_mut(&a).unwrap().stock, "laser_militaire", 1.0);
+        // Portee : la cible la plus proche du tireur.
+        let cible = (0..m.cases.len()).filter(|&i| m.cases[i].proprio == Some(d))
+            .min_by_key(|&i| (0..m.cases.len()).filter(|&k| m.cases[k].proprio == Some(a)).map(|k| m.distance(k, i)).min().unwrap()).unwrap();
+        let cmd = json!({ "action": "tir_laser", "cible": cible });
+        let pret = m.rayon(cible, PORTEE_LASER_MILITAIRE).iter().any(|&v| m.cases[v].proprio == Some(a));
+        assert_eq!(commande(&mut m, &j, &cmd, &regles).is_ok(), pret);
+        if pret {
+            assert!(commande(&mut m, &j, &cmd, &regles).is_err(), "recharge");
+            assert_eq!(fab::qte(&m.pays[&a].stock, "laser_militaire"), 1.0, "le laser ne s'use pas");
+            assert!(m.effets.iter().any(|e| e.genre == "laser"));
+        }
+    }
+
+    /// Les nations de l'ordinateur n'ont pas la protection des nouveaux venus.
+    #[test]
+    fn bots_attaquables_tout_de_suite() {
+        let regles = Regles { protection_s: 7200, vitesse: 1.0 };
+        let mut m = Monde::generer(60, 40, 7);
+        crate::bots::assurer(&mut m, 2, &regles, 0.0);
+        let ids: Vec<u32> = m.pays.keys().copied().collect();
+        let (a, d) = (ids[0], ids[1]);
+        m.pays.get_mut(&a).unwrap().influence = 100.0;
+        assert!(m.pays[&d].protection > maintenant(), "le bot a bien un horodatage de protection");
+        assert!(declarer_guerre(&mut m, a, d).is_ok(), "mais il reste attaquable");
     }
 
     /// Recette qui debloque un batiment : la centrale a fusion exige un

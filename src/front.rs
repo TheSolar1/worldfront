@@ -122,7 +122,7 @@ pub fn etendre(m: &mut Monde, pid: u32, i: usize, ratio: f64, maint: i64) -> Res
         if !m.en_guerre(pid, d) {
             return Err(format!("Vous n'êtes pas en guerre contre {} : déclarez-lui la guerre d'abord (Diplomatie).", m.nom_pays(d)));
         }
-        if m.pays.get(&d).map(|p| p.protection > maint).unwrap_or(false) {
+        if m.pays.get(&d).map(|p| p.protege(maint)).unwrap_or(false) {
             return Err("Cette nation est encore sous protection.".into());
         }
     }

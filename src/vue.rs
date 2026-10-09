@@ -385,6 +385,7 @@ pub fn etat(ctx: &Contexte, pid: Option<u32>, suivi: &mut Suivi) -> String {
             let o = v.as_object_mut().unwrap();
             o.insert("bilan".into(), json!(b));
             o.insert("scores".into(), jeu::scores(p, &b));
+            o.insert("laser_recharge".into(), json!((p.laser_pret - m.temps).max(0.0).ceil()));
             o.insert(
                 "mods".into(),
                 json!({

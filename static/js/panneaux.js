@@ -1614,7 +1614,12 @@ export function actionsRadiales(S, i) {
     const envoyee = g => S.propositions.some(x => x.de === m.id && x.a === p.id && x.genre === g);
     const diplo = [];
     if (rel === 'guerre') diplo.push({ ico: 'dove', label: 'Proposer la paix', act: 'proposer', data: { pays: p.id, genre: 'paix' }, off: envoyee('paix') });
-    else if (!allies) diplo.push({ ico: 'burst', label: 'Déclarer la guerre', act: 'guerre', data: { pays: p.id }, danger: true });
+    else if (!allies) {
+      // Seuls les joueurs humains ont la protection des nouveaux venus.
+      const protege = !p.bot && p.protection > 0;
+      diplo.push({ ico: 'burst', label: 'Déclarer la guerre', act: 'guerre', data: { pays: p.id }, danger: true,
+        info: protege ? `Nouveau venu protégé encore ${Math.ceil(p.protection / 60)} min` : "Coûte 10 d'influence", off: protege });
+    }
     if (rel === 'paix' && !allies) diplo.push({ ico: 'file-signature', label: 'Pacte de non-agression', act: 'proposer', data: { pays: p.id, genre: 'pna' }, off: envoyee('pna') });
     if (rel !== 'guerre' && !allies) diplo.push({ ico: 'people-group', label: 'Proposer une alliance', act: 'proposer', data: { pays: p.id, genre: 'alliance' }, off: envoyee('alliance') });
     diplo.push({ ico: 'box-open', label: 'Envoyer une aide', act: 'aide_form', data: { pays: p.id } });
@@ -1645,7 +1650,27 @@ export function actionsRadiales(S, i) {
           info: manque ? 'Il faut un missile non conventionnel' : `${fmt(n)} en stock · depuis votre silo${exigeMissile(o) ? ` · ${fmt(missiles)} missile${missiles >= 2 ? 's' : ''}` : ''}`,
           act: 'arme_ici', data: { objet: o, case: i }, danger: true, off: manque });
       }
+      const lasers = possede(S, 'laser') + possede(S, 'laser_militaire');
+      if (lasers >= 1) {
+        const recharge = m.laser_recharge || 0;
+        frappes.push({ ico: 'wand-magic-sparkles', label: 'Tir laser', act: 'laser_ici', data: { case: i }, danger: true, off: recharge > 0,
+          info: recharge > 0 ? `Recharge encore ${recharge} s` : `Instantané · portée ${possede(S, 'laser_militaire') >= 1 ? 8 : 4} cases de votre territoire` });
+      }
       if (frappes.length) items.push(frappes.length === 1 ? frappes[0] : { ico: 'crosshairs', label: 'Frappes', sous: frappes, danger: true });
+    }
+  }
+
+  // Deplacer ses armees ici (terre sur la terre, flotte sur la mer), les
+  // plus proches d'abord.
+  if (vivant) {
+    const dom = t.terre ? 'terre' : 'mer';
+    const loin = S.armees.filter(a => a.proprio === m.id && a.dom === dom && a.case !== i)
+      .sort((x, y) => S.g.distance(x.case, i) - S.g.distance(y.case, i));
+    if (loin.length) {
+      const sous = loin.slice(0, 7).map(a => ({ ico: dom === 'mer' ? 'ship' : 'person-military-rifle', label: a.nom,
+        info: `${S.g.distance(a.case, i)} cases · ${Object.values(a.unites || {}).reduce((s, n) => s + n, 0)} unités`, act: 'deplacer_ici', data: { armee: a.id, case: i } }));
+      if (loin.length > 1) sous.unshift({ ico: 'people-arrows', label: `Toutes (${loin.length})`, info: 'Toutes vos armées convergent ici', act: 'deplacer_toutes', data: { case: i, dom } });
+      items.push(sous.length === 1 ? { ...sous[0], label: `Déplacer ${sous[0].label} ici` } : { ico: 'arrows-to-dot', label: 'Déplacer une armée ici', sous });
     }
   }
 
