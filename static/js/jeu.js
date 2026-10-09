@@ -390,12 +390,16 @@ function anneau(items, [r0, r1], niveau, centre, actif) {
     const data = it.off ? '' : it.sous ? `data-rad="${niveau}.${k}"` : it.act ? `data-act="${it.act}" ${Object.entries(it.data || {}).map(([c, v]) => `data-${c}="${esc(String(v))}"`).join(' ')}` : '';
     const cls = `wf-rad-sec ${it.danger ? 'danger' : ''} ${it.off ? 'off' : ''} ${it.sous ? 'groupe' : ''} ${actif === k ? 'actif' : ''} ${it.qtes ? 'qtes' : ''}`;
     // Bouton rond au milieu de son secteur, aussi grand que la place le permet.
-    const rb = Math.max(14, Math.min((r1 - r0) / 2 - 2, rm * Math.sin(pas / 2) - 3));
+    let rb = Math.max(14, Math.min((r1 - r0) / 2 - 2, rm * Math.sin(pas / 2) - 3));
+    // Un groupe est ouvert : les autres boutons de ce cercle deviennent de
+    // petites pastilles discretes (toujours cliquables) pour alleger.
+    const discret = actif != null && actif !== k;
+    if (discret) rb = Math.min(rb, 13);
     // Le groupe porte l'action : toute la part d'anneau est cliquable.
     svg += `<g class="wf-rad-g" data-n="${niveau}" data-k="${k}" ${data}><path class="wf-rad-zone" d="${arcSvg(r0, r1, a0, a1)}"/>
-      <circle class="${cls}" cx="${(C + rm * Math.cos(am)).toFixed(1)}" cy="${(C + rm * Math.sin(am)).toFixed(1)}" r="${rb.toFixed(1)}"/></g>`;
+      <circle class="${cls} ${discret ? 'discret' : ''}" cx="${(C + rm * Math.cos(am)).toFixed(1)}" cy="${(C + rm * Math.sin(am)).toFixed(1)}" r="${rb.toFixed(1)}"/></g>`;
     const t = Math.min(22, rb * 0.82);
-    html += `<span class="wf-rad-ic ${it.off ? 'off' : ''} ${it.danger ? 'danger' : ''} ${actif === k ? 'actif' : ''}" style="left:${(C + rm * Math.cos(am)).toFixed(1)}px;top:${(C + rm * Math.sin(am)).toFixed(1)}px;--t:${t.toFixed(1)}px">${ico(it.ico)}${it.sous ? '<b></b>' : ''}</span>`;
+    html += `<span class="wf-rad-ic ${it.off ? 'off' : ''} ${it.danger ? 'danger' : ''} ${actif === k ? 'actif' : ''} ${discret ? 'discret' : ''}" style="left:${(C + rm * Math.cos(am)).toFixed(1)}px;top:${(C + rm * Math.sin(am)).toFixed(1)}px;--t:${t.toFixed(1)}px">${ico(it.ico)}${it.sous ? '<b></b>' : ''}</span>`;
   });
   return { svg, html };
 }

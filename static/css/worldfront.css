@@ -801,9 +801,13 @@ body[data-mode="dev"] .wf-apps-vex, body[data-mode="dev"] .wf-lien-vex { display
   transition: fill .12s, stroke .12s;
 }
 .wf-rad-g:hover .wf-rad-sec { fill: color-mix(in srgb, var(--accent) 18%, var(--surface)); stroke: var(--accent); }
-.wf-rad-sec.actif { fill: var(--accent); stroke: var(--accent); }
+.wf-rad-sec.actif, .wf-rad-g:hover .wf-rad-sec.actif { fill: var(--accent); stroke: var(--accent); }
 .wf-rad-sec.danger { stroke: color-mix(in srgb, var(--danger, #dc2626) 50%, var(--panel-border)); }
 .wf-rad-g:hover .wf-rad-sec.danger { fill: color-mix(in srgb, var(--danger, #dc2626) 18%, var(--surface)); stroke: var(--danger, #dc2626); }
+.wf-rad-sec.discret { opacity: .55; }
+.wf-rad-g:hover .wf-rad-sec.discret { opacity: 1; }
+.wf-rad-ic.discret { opacity: .6; }
+.wf-rad-ic.discret b { display: none; }
 .wf-rad-sec.off { fill: color-mix(in srgb, var(--surface) 82%, var(--panel-border)); }
 .wf-rad-centre { pointer-events: auto; cursor: pointer; fill: var(--surface); stroke: var(--panel-border); stroke-width: 1.5; }
 .wf-rad-centre:hover { stroke: var(--accent); stroke-width: 2.5; }
