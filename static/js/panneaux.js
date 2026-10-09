@@ -1539,15 +1539,13 @@ function coutTexte(S, c) {
   return c.map((v, k) => v ? `${fmt(v)} ${S.defs.ressources[k].nom.toLowerCase()}` : '').filter(Boolean).join(' · ');
 }
 
-/** Construire > Protection : bouclier d'energie a deployer sur la case. */
-function protection(S, i) {
+/** Bouclier d'energie a deployer sur la case (rangé dans Construire › Défense). */
+function entreeBouclier(S, i) {
   const m = S.moi;
   const n = possede(S, 'bouclier_energie');
   const actif = (S.boucliers || []).some(b => b.proprio === m.id && b.case === i);
-  return { ico: 'shield-heart', label: 'Protection', sous: [
-    { ico: 'shield-heart', label: "Bouclier d'énergie", act: 'bouclier_ici', data: { case: i }, off: actif || n < 1,
-      info: actif ? 'Cette case est déjà protégée' : n < 1 ? 'Aucun en stock : fabriquez-en à la fabrique (niveau 7)' : `30 min, rayon 2 · ${fmt(Math.floor(n))} en stock` },
-  ] };
+  return { ico: 'shield-heart', label: "Bouclier d'énergie", act: 'bouclier_ici', data: { case: i }, off: actif || n < 1,
+    info: actif ? 'Cette case est déjà protégée' : n < 1 ? 'Aucun en stock : fabriquez-en à la fabrique (niveau 7)' : `Se déploie 30 min, rayon 2 · ${fmt(Math.floor(n))} en stock` };
 }
 
 /** Unites que produit ce batiment (caserne, usine, base aerienne, chantier
@@ -1564,24 +1562,43 @@ function menuProduire(S, i, b) {
   }) };
 }
 
-/** Silo : tirer ses missiles (on choisit ensuite la cible sur la carte). */
+/** Silo : lancer ses missiles (tous ses silos : ce silo d'abord), puis
+ *  on clique la cible. Les types sans missile pret disent ou en est la
+ *  production. */
 function menuSilo(S, i) {
   const m = S.moi;
   const sous = [];
-  for (const a of S.armees.filter(x => x.proprio === m.id && x.case === i && x.dom === 'missile')) {
+  const parType = new Map();
+  const arsenaux = S.armees.filter(x => x.proprio === m.id && x.dom === 'missile' && S.carte.bat[x.case] === 'silo')
+    .sort((x, y) => (x.case === i ? 0 : 1) - (y.case === i ? 0 : 1));
+  for (const a of arsenaux) {
     for (const [id, n] of Object.entries(a.unites || {})) {
-      const u = uniDef(S, id);
-      if (u && n) sous.push({ ico: u.icone, label: `Tirer : ${u.nom}`, info: `${n} en silo · portée ${u.portee > 900 ? 'illimitée' : u.portee + ' cases'} · puis cliquez la cible`, act: 'ordre', data: { type: 'missile', genre: id, armee: a.id }, danger: id === 'missile_nucleaire' });
+      if (!n) continue;
+      const e = parType.get(id) || { total: 0, armee: a };
+      e.total += n;
+      parType.set(id, e);
     }
+  }
+  for (const u of S.defs.unites.filter(u => u.batiment === 'silo' && u.id !== 'missile_non_conventionnel')) {
+    const e = parType.get(u.id);
+    const portee = u.portee > 900 ? 'portée illimitée' : `portée ${u.portee} cases`;
+    if (e) {
+      sous.push({ ico: u.icone, label: `Lancer : ${u.nom}`, info: `${e.total} prêt${e.total > 1 ? 's' : ''} · ${portee} · puis cliquez la cible`,
+        act: 'ordre', data: { type: 'missile', genre: u.id, armee: e.armee.id }, danger: u.id === 'missile_nucleaire' });
+      continue;
+    }
+    const enCours = m.productions.filter(p => p.unite === u.id);
+    const reste = enCours.length ? Math.min(...enCours.map(p => p.reste)) / (m.bilan.vitesse || 1) / (S.vitesse || 1) : 0;
+    sous.push({ ico: u.icone, label: `Lancer : ${u.nom}`, off: true,
+      info: enCours.length ? `En production : prêt dans ${duree(reste)}` : u.tech && !aTech(S, u.tech) ? 'Technologie : ' + nomTech(S, u.tech) : 'Aucun : produisez-en (Produire, ci-dessus)' });
   }
   const nc = possede(S, 'missile_non_conventionnel');
   for (const o of ARMES_SPECIALES) {
     const n = possede(S, o);
     if (n >= 1) sous.push({ ico: ICONES_ARMES[o], label: nomObjet(S, o), act: 'ordre_special', data: { objet: o }, danger: true, off: nc < 1,
-      info: nc < 1 ? 'Il faut un missile non conventionnel (silo › Produire)' : `${fmt(Math.floor(n))} en stock · ${fmt(Math.floor(nc))} missile(s) non conventionnel(s) · puis cliquez la cible` });
+      info: nc < 1 ? 'Il faut un missile non conventionnel (Produire, dans le silo)' : `${fmt(Math.floor(n))} en stock · consomme 1 missile non conventionnel (${fmt(Math.floor(nc))} en stock) · puis cliquez la cible` });
   }
-  if (!sous.length) sous.push({ ico: 'rocket', label: 'Aucun missile', info: 'Produisez des missiles avec « Produire »', off: true });
-  return { ico: 'crosshairs', label: 'Tirer depuis ce silo', sous, danger: true };
+  return { ico: 'crosshairs', label: 'Lancer', sous, danger: true };
 }
 
 export function actionsRadiales(S, i) {
@@ -1615,7 +1632,8 @@ export function actionsRadiales(S, i) {
       }));
       // Liste complete (panneau Construction) : tous les batiments, avec les
       // raisons quand on ne peut pas encore les construire.
-      sous.push(protection(S, i));
+      const def = sous.find(x => x.label === 'Défense') || (sous.push({ ico: 'shield-halved', label: 'Défense', sous: [] }), sous[sous.length - 1]);
+      def.sous.push(entreeBouclier(S, i));
       sous.push({ ico: 'list', label: 'Tous les bâtiments', info: 'Liste complète, avec ce qui manque', act: 'construire_liste', data: { case: i } });
       items.push({ ico: 'helmet-safety', label: 'Construire', info: `${possibles.length} bâtiments possibles ici`, sous });
     } else {
@@ -1629,7 +1647,6 @@ export function actionsRadiales(S, i) {
         items.push({ ico: 'arrow-up', label: `Améliorer (niveau ${niv + 1})`, info: exige || coutTexte(S, c), act: 'ameliorer', data: { case: i }, off: !peutPayer(S, c) || !!exige });
       }
       if (b === 'silo') items.push(menuSilo(S, i));
-      items.push(protection(S, i));
       items.push({ ico: 'sliders', label: `Gérer : ${d?.nom || b}`, info: 'Production, recherche, détails', act: 'infos_case', data: { case: i } });
       if (b !== 'capitale') items.push({ ico: 'trash', label: 'Démolir', act: 'demolir', data: { case: i }, danger: true });
     }

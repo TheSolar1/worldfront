@@ -381,16 +381,18 @@ function anneau(items, [r0, r1], niveau, centre, actif) {
   // d'entrees, l'anneau complet sinon.
   const pas = niveau === 0 || n > 9 ? (2 * Math.PI) / n : Math.min(Math.PI / 4.2, (2 * Math.PI) / n);
   const debut = niveau === 0 || n > 9 ? -Math.PI / 2 : centre - (pas * n) / 2;
-  const ecart = Math.min(0.03, pas * 0.08);
+  // Coins arrondis facon VEX : un trait epais et arrondi de la couleur du
+  // secteur, donc on retrecit le trace d'autant et on espace les secteurs.
+  const R = 5, ecart = Math.min(pas * 0.22, (R + 4) / r0);
   const C = RAD.taille / 2, rm = (r0 + r1) / 2;
   let svg = '', html = '';
   items.forEach((it, k) => {
     const a0 = debut + k * pas + ecart, a1 = debut + (k + 1) * pas - ecart, am = (a0 + a1) / 2;
     const data = it.off ? '' : it.sous ? `data-rad="${niveau}.${k}"` : it.act ? `data-act="${it.act}" ${Object.entries(it.data || {}).map(([c, v]) => `data-${c}="${esc(String(v))}"`).join(' ')}` : '';
     const cls = `wf-rad-sec ${it.danger ? 'danger' : ''} ${it.off ? 'off' : ''} ${it.sous ? 'groupe' : ''} ${actif === k ? 'actif' : ''} ${it.qtes ? 'qtes' : ''}`;
-    svg += `<path class="${cls}" d="${arcSvg(r0, r1, a0, a1)}" data-n="${niveau}" data-k="${k}" ${data}/>`;
+    svg += `<path class="${cls}" d="${arcSvg(r0 + R, r1 - R, a0, a1)}" data-n="${niveau}" data-k="${k}" ${data}/>`;
     const t = Math.min(22, (r1 - r0) * 0.42, rm * (a1 - a0) * 0.55);
-    html += `<span class="wf-rad-ic ${it.off ? 'off' : ''} ${it.danger ? 'danger' : ''}" style="left:${(C + rm * Math.cos(am)).toFixed(1)}px;top:${(C + rm * Math.sin(am)).toFixed(1)}px;--t:${t.toFixed(1)}px">${ico(it.ico)}${it.sous ? '<b></b>' : ''}</span>`;
+    html += `<span class="wf-rad-ic ${it.off ? 'off' : ''} ${it.danger ? 'danger' : ''} ${actif === k ? 'actif' : ''}" style="left:${(C + rm * Math.cos(am)).toFixed(1)}px;top:${(C + rm * Math.sin(am)).toFixed(1)}px;--t:${t.toFixed(1)}px">${ico(it.ico)}${it.sous ? '<b></b>' : ''}</span>`;
   });
   return { svg, html };
 }

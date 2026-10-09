@@ -794,28 +794,29 @@ body[data-mode="dev"] .wf-apps-vex, body[data-mode="dev"] .wf-lien-vex { display
 .wf-radial { position: absolute; z-index: 40; width: 352px; height: 352px; transform: translate(-50%, -50%); pointer-events: none; }
 .wf-radial svg { position: absolute; inset: 0; overflow: visible; filter: drop-shadow(0 8px 18px rgba(0, 0, 0, .35)); }
 .wf-rad-sec {
-  pointer-events: auto; cursor: pointer;
-  fill: color-mix(in srgb, var(--surface) 92%, transparent); stroke: var(--panel-border); stroke-width: 1;
-  transition: fill .12s;
+  --f: var(--surface);
+  pointer-events: auto; cursor: pointer; fill: var(--f); stroke: var(--f);
+  stroke-width: 10; stroke-linejoin: round; transition: fill .12s, stroke .12s;
 }
-.wf-rad-sec:hover { fill: color-mix(in srgb, var(--accent) 30%, var(--surface)); }
-.wf-rad-sec.actif { fill: color-mix(in srgb, var(--accent) 22%, var(--surface)); stroke: var(--accent); }
-.wf-rad-sec.danger:hover { fill: color-mix(in srgb, var(--danger, #dc2626) 30%, var(--surface)); }
-.wf-rad-sec.off { cursor: help; fill: color-mix(in srgb, var(--surface) 70%, transparent); }
-.wf-rad-sec.off:hover { fill: color-mix(in srgb, var(--surface) 82%, transparent); }
-.wf-rad-centre { pointer-events: auto; cursor: pointer; fill: var(--surface); stroke: var(--panel-border); stroke-width: 1; }
-.wf-rad-centre:hover { stroke: var(--accent); stroke-width: 2; }
+.wf-rad-sec:hover { --f: color-mix(in srgb, var(--accent) 22%, var(--surface)); }
+.wf-rad-sec.actif { --f: var(--accent); }
+.wf-rad-sec.danger:hover { --f: color-mix(in srgb, var(--danger, #dc2626) 22%, var(--surface)); }
+.wf-rad-sec.off { cursor: help; --f: color-mix(in srgb, var(--surface) 80%, var(--panel-border)); }
+.wf-rad-centre { pointer-events: auto; cursor: pointer; fill: var(--surface); stroke: var(--panel-border); stroke-width: 1.5; }
+.wf-rad-centre:hover { stroke: var(--accent); stroke-width: 2.5; }
 .wf-rad-ic { position: absolute; transform: translate(-50%, -50%); pointer-events: none; display: flex; }
 .wf-rad-ic .ico { width: var(--t); height: var(--t); background: var(--accent); }
 .wf-rad-ic.danger .ico { background: var(--danger, #dc2626); }
 .wf-rad-ic.off .ico { background: var(--text-dim); opacity: .45; }
 .wf-rad-ic.centre .ico { background: var(--text-dim); }
 .wf-rad-ic b { position: absolute; right: -6px; bottom: -5px; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+.wf-rad-ic.actif .ico { background: #fff; }
+.wf-rad-ic.actif b { background: #fff; }
 .wf-rad-etiquette {
   position: absolute; left: 50%; top: calc(50% + 178px); transform: translateX(-50%);
   min-width: 190px; max-width: 280px; text-align: center; pointer-events: none;
-  background: var(--surface); border: 1px solid var(--panel-border); border-radius: 10px;
-  padding: 7px 12px; box-shadow: 0 6px 18px rgba(0, 0, 0, .25); font-size: 12.5px; line-height: 1.35;
+  background: var(--surface); border: 1px solid var(--panel-border); border-radius: 14px;
+  padding: 8px 14px; box-shadow: 0 6px 18px rgba(0, 0, 0, .25); font-size: 12.5px; line-height: 1.35;
 }
 .wf-rad-etiquette b { display: block; font-size: 13px; }
 .wf-rad-etiquette small { display: block; color: var(--text-dim); }
