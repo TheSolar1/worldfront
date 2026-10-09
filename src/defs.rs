@@ -382,7 +382,19 @@ pub const UNITES: &[UniteDef] = &[
         att_sol: 15000.0, att_air: 0.0, att_mer: 15000.0, defense: 0.0, pv: 1.0, vitesse: 45.0, portee: 999.0,
         cout: r(5000.0, 0.0, 1200.0, 300.0, 0.0, 120.0), entretien: [4.0, 0.0, 0.0], temps: 240.0,
         batiment: "silo", tech: "mil_nucleaire", furtif: false, puissance: 60.0, produit: "" },
+    // Produit par le silo mais range dans le stock (comme celui de la
+    // fabrique) : il porte les armes plus puissantes que la nuke.
+    UniteDef { id: "missile_non_conventionnel", nom: "Missile non conventionnel", icone: "rocket", domaine: DOM_MISSILE,
+        desc: "Vecteur blindé et confiné, seul capable de porter une bombe à antimatière, une bombe à trou noir ou le point zéro. Va dans votre stock ; un missile est consommé à chaque tir.",
+        att_sol: 0.0, att_air: 0.0, att_mer: 0.0, defense: 0.0, pv: 1.0, vitesse: 45.0, portee: 999.0,
+        cout: r(8000.0, 0.0, 2000.0, 50.0, 300.0, 200.0), entretien: [0.0, 0.0, 0.0], temps: 300.0,
+        batiment: "silo", tech: "mil_nucleaire", furtif: false, puissance: 0.0, produit: "" },
 ];
+
+/// Unites produites qui vont dans le stock (fabrication) et non dans une armee.
+pub fn va_au_stock(id: &str) -> bool {
+    id == "missile_non_conventionnel"
+}
 
 pub fn unite(id: &str) -> Option<&'static UniteDef> {
     UNITES.iter().find(|u| u.id == id)

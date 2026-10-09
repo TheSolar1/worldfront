@@ -1805,10 +1805,15 @@ pub fn tick(m: &mut Monde, dt: f64) -> HashMap<u32, Bilan> {
         if !ok {
             continue;
         }
+        let nom = def.map(|d| d.nom).unwrap_or("?");
+        if va_au_stock(&u) {
+            fab::ajouter(&mut m.pays.get_mut(&pid).unwrap().stock, &u, qte as f64);
+            m.evenement(Some(pid), "militaire", format!("{} × {} rangés dans votre stock.", qte, nom), Some(case));
+            continue;
+        }
         let mut lot = BTreeMap::new();
         lot.insert(u.clone(), qte);
         deposer_unites(m, pid, case, &lot);
-        let nom = def.map(|d| d.nom).unwrap_or("?");
         m.evenement(Some(pid), "militaire", format!("{} × {} prêts au combat.", qte, nom), Some(case));
     }
 

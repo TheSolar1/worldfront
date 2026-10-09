@@ -1490,7 +1490,7 @@ function ongletProduits(S) {
       ${p.effet ? `<div class="wf-effet">${ico('star')} ${esc(p.effet.texte)}</div>` : ''}
       ${debloque(S, p.id).length ? `<div class="wf-effet">${ico('unlock')} Débloque : ${esc(debloque(S, p.id).join(', '))}</div>` : ''}
       <div class="wf-fab-carte-pied">
-        ${arme ? `<button class="wf-btn petit danger" data-act="ordre_special" data-objet="${p.id}" ${sansMissile ? 'disabled title="Il faut un missile non conventionnel (fabrique, niveau 7)"' : ''}>${ico('crosshairs')} Lancer</button>`
+        ${arme ? `<button class="wf-btn petit danger" data-act="ordre_special" data-objet="${p.id}" ${sansMissile ? 'disabled title="Il faut un missile non conventionnel (silo › Produire, ou fabrique niveau 7)"' : ''}>${ico('crosshairs')} Lancer</button>`
           : p.id === 'bouclier_energie' ? `<button class="wf-btn petit" data-act="ordre_bouclier">${ico('shield-heart')} Déployer</button>` : '<span></span>'}
         <span class="wf-boutons"><button class="wf-btn petit secondaire" data-act="vendre_objet" data-objet="${p.id}" data-qte="1">Vendre 1</button>
         ${n >= 2 ? `<button class="wf-btn petit secondaire" data-act="vendre_objet" data-objet="${p.id}" data-qte="${Math.floor(n)}">Tout</button>` : ''}</span>
@@ -1539,6 +1539,51 @@ function coutTexte(S, c) {
   return c.map((v, k) => v ? `${fmt(v)} ${S.defs.ressources[k].nom.toLowerCase()}` : '').filter(Boolean).join(' · ');
 }
 
+/** Construire > Protection : bouclier d'energie a deployer sur la case. */
+function protection(S, i) {
+  const m = S.moi;
+  const n = possede(S, 'bouclier_energie');
+  const actif = (S.boucliers || []).some(b => b.proprio === m.id && b.case === i);
+  return { ico: 'shield-halved', label: 'Protection', sous: [
+    { ico: 'shield-heart', label: "Bouclier d'énergie", act: 'bouclier_ici', data: { case: i }, off: actif || n < 1,
+      info: actif ? 'Cette case est déjà protégée' : n < 1 ? 'Aucun en stock : fabriquez-en à la fabrique (niveau 7)' : `30 min, rayon 2 · ${fmt(Math.floor(n))} en stock` },
+  ] };
+}
+
+/** Unites que produit ce batiment (caserne, usine, base aerienne, chantier
+ *  naval, silo…), avec la raison quand on ne peut pas encore. */
+function menuProduire(S, i, b) {
+  const m = S.moi;
+  const unites = S.defs.unites.filter(u => u.batiment === b);
+  if (!unites.length) return null;
+  const file = m.productions.filter(p => p.case === i).length;
+  return { ico: 'person-military-rifle', label: 'Produire', info: file ? `${file} commande(s) en cours` : `${unites.length} unités`, sous: unites.map(u => {
+    const c = coutUnite(u, 1, m.mods, m.spe);
+    const raison = u.tech && !aTech(S, u.tech) ? 'Technologie : ' + nomTech(S, u.tech) : manqueProduit(S, u);
+    return { ico: u.icone, label: u.nom, info: raison || coutTexte(S, c), act: 'produire', data: { case: i, unite: u.id }, off: !!raison || !peutPayer(S, c) };
+  }) };
+}
+
+/** Silo : tirer ses missiles (on choisit ensuite la cible sur la carte). */
+function menuSilo(S, i) {
+  const m = S.moi;
+  const sous = [];
+  for (const a of S.armees.filter(x => x.proprio === m.id && x.case === i && x.dom === 'missile')) {
+    for (const [id, n] of Object.entries(a.unites || {})) {
+      const u = uniDef(S, id);
+      if (u && n) sous.push({ ico: u.icone, label: `Tirer : ${u.nom}`, info: `${n} en silo · portée ${u.portee > 900 ? 'illimitée' : u.portee + ' cases'} · puis cliquez la cible`, act: 'ordre', data: { type: 'missile', genre: id, armee: a.id }, danger: id === 'missile_nucleaire' });
+    }
+  }
+  const nc = possede(S, 'missile_non_conventionnel');
+  for (const o of ARMES_SPECIALES) {
+    const n = possede(S, o);
+    if (n >= 1) sous.push({ ico: ICONES_ARMES[o], label: nomObjet(S, o), act: 'ordre_special', data: { objet: o }, danger: true, off: nc < 1,
+      info: nc < 1 ? 'Il faut un missile non conventionnel (silo › Produire)' : `${fmt(Math.floor(n))} en stock · ${fmt(Math.floor(nc))} missile(s) non conventionnel(s) · puis cliquez la cible` });
+  }
+  if (!sous.length) sous.push({ ico: 'rocket', label: 'Aucun missile', info: 'Produisez des missiles avec « Produire »', off: true });
+  return { ico: 'crosshairs', label: 'Tirer depuis ce silo', sous, danger: true };
+}
+
 export function actionsRadiales(S, i) {
   const m = S.moi;
   const items = [];
@@ -1570,6 +1615,7 @@ export function actionsRadiales(S, i) {
       }));
       // Liste complete (panneau Construction) : tous les batiments, avec les
       // raisons quand on ne peut pas encore les construire.
+      sous.push(protection(S, i));
       sous.push({ ico: 'list', label: 'Tous les bâtiments', info: 'Liste complète, avec ce qui manque', act: 'construire_liste', data: { case: i } });
       items.push({ ico: 'helmet-safety', label: 'Construire', info: `${possibles.length} bâtiments possibles ici`, sous });
     } else {
@@ -1580,15 +1626,13 @@ export function actionsRadiales(S, i) {
         const exige = manqueProduit(S, d);
         items.push({ ico: 'arrow-up', label: `Améliorer (niveau ${niv + 1})`, info: exige || coutTexte(S, c), act: 'ameliorer', data: { case: i }, off: !peutPayer(S, c) || !!exige });
       }
+      const prod = menuProduire(S, i, b);
+      if (prod) items.push(prod);
+      if (b === 'silo') items.push(menuSilo(S, i));
+      items.push(protection(S, i));
       items.push({ ico: 'sliders', label: `Gérer : ${d?.nom || b}`, info: 'Production, recherche, détails', act: 'infos_case', data: { case: i } });
       if (b !== 'capitale') items.push({ ico: 'trash', label: 'Démolir', act: 'demolir', data: { case: i }, danger: true });
     }
-  }
-
-  // Bouclier d'energie fabrique : on le deploie sur sa propre case.
-  if (vivant && pid === m.id && t.terre && possede(S, 'bouclier_energie') >= 1) {
-    const actif = (S.boucliers || []).some(b => b.proprio === m.id && b.case === i);
-    items.push({ ico: 'shield-heart', label: "Bouclier d'énergie", info: actif ? 'Déjà protégée' : `30 min, rayon 2 · ${fmt(possede(S, 'bouclier_energie'))} en stock`, act: 'bouclier_ici', data: { case: i }, off: actif });
   }
 
   // Troupes : terre neutre ou ennemie en guerre qui touche votre territoire,
@@ -1661,7 +1705,7 @@ export function actionsRadiales(S, i) {
         if (n < 1) continue;
         const manque = exigeMissile(o) && missiles < 1;
         frappes.push({ ico: ICONES_ARMES[o], label: nomObjet(S, o),
-          info: !guerre ? "Déclarez d'abord la guerre (Diplomatie)" : manque ? 'Il faut un missile non conventionnel' : `${fmt(n)} en stock · depuis votre silo${exigeMissile(o) ? ` · ${fmt(missiles)} missile${missiles >= 2 ? 's' : ''}` : ''}`,
+          info: !guerre ? "Déclarez d'abord la guerre (Diplomatie)" : manque ? 'Il faut un missile non conventionnel (silo › Produire)' : `${fmt(n)} en stock · depuis votre silo${exigeMissile(o) ? ` · ${fmt(missiles)} missile${missiles >= 2 ? 's' : ''}` : ''}`,
           act: 'arme_ici', data: { objet: o, case: i }, danger: true, off: manque || !guerre });
       }
       const lasers = possede(S, 'laser') + possede(S, 'laser_militaire');
@@ -1670,7 +1714,7 @@ export function actionsRadiales(S, i) {
         frappes.push({ ico: 'wand-magic-sparkles', label: 'Tir laser', act: 'laser_ici', data: { case: i }, danger: true, off: !guerre,
           info: !guerre ? "Déclarez d'abord la guerre (Diplomatie)" : `Instantané, sans limite · puissance ${fmt(Math.floor(puissance))}` });
       }
-      if (!frappes.length) frappes.push({ ico: 'rocket', label: 'Aucun missile', info: 'Construisez un silo, puis produisez-y des missiles (Gérer le silo)', off: true });
+      if (!frappes.length) frappes.push({ ico: 'rocket', label: 'Aucun missile', info: 'Construisez un silo, puis menu du silo › Produire', off: true });
       if (frappes.length) items.push(frappes.length === 1 ? frappes[0] : { ico: 'crosshairs', label: 'Frappes', sous: frappes, danger: true });
     }
   }
