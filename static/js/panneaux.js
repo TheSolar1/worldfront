@@ -1568,7 +1568,10 @@ export function actionsRadiales(S, i) {
           return { ico: d.icone, label: d.nom, info: exige || coutTexte(S, c) + (d.produit ? ' · ' + nomObjet(S, d.produit).toLowerCase() : ''), act: 'construire', data: { case: i, bat: d.id }, off: !peutPayer(S, c) || !!exige };
         }),
       }));
-      if (sous.length) items.push({ ico: 'helmet-safety', label: 'Construire', sous: sous.length === 1 ? sous[0].sous : sous });
+      // Liste complete (panneau Construction) : tous les batiments, avec les
+      // raisons quand on ne peut pas encore les construire.
+      sous.push({ ico: 'list', label: 'Tous les bâtiments', info: 'Liste complète, avec ce qui manque', act: 'construire_liste', data: { case: i } });
+      items.push({ ico: 'helmet-safety', label: 'Construire', info: `${possibles.length} bâtiments possibles ici`, sous });
     } else {
       const d = batDef(S, b);
       const niv = S.carte.niv[i];
@@ -1630,16 +1633,27 @@ export function actionsRadiales(S, i) {
     ] });
     items.push({ ico: 'handshake', label: `Diplomatie : ${p.nom}`, sous: diplo });
 
-    if (rel === 'guerre') {
+    if (!allies) {
+      const guerre = rel === 'guerre';
       const frappes = [];
-      const vus = new Set();
-      for (const a of S.armees.filter(x => x.proprio === m.id && x.dom === 'missile')) {
+      // Missiles des silos, regroupes par type : on tire depuis le silo a
+      // portee le plus proche ; sinon on dit pourquoi on ne peut pas.
+      const parType = new Map();
+      for (const a of S.armees.filter(x => x.proprio === m.id && x.dom === 'missile' && S.carte.bat[x.case] === 'silo')) {
         for (const [id, n] of Object.entries(a.unites || {})) {
           const u = uniDef(S, id);
-          if (!u || !n || vus.has(id) || (u.portee < 900 && S.g.distance(a.case, i) > u.portee)) continue;
-          vus.add(id);
-          frappes.push({ ico: u.icone, label: `Tirer : ${u.nom}`, info: `${n} en silo`, act: 'tirer_ici', data: { armee: a.id, genre: id, case: i }, danger: id === 'missile_nucleaire' });
+          if (!u || !n) continue;
+          const d = S.g.distance(a.case, i);
+          const e = parType.get(id) || { u, total: 0, silo: null, dist: Infinity };
+          e.total += n;
+          if ((u.portee >= 900 || d <= u.portee) && d < e.dist) { e.silo = a; e.dist = d; }
+          parType.set(id, e);
         }
+      }
+      for (const [id, e] of parType) {
+        const raison = !guerre ? "Déclarez d'abord la guerre (Diplomatie)" : !e.silo ? `Hors de portée (${e.u.portee} cases depuis un silo)` : '';
+        frappes.push({ ico: e.u.icone, label: `Tirer : ${e.u.nom}`, info: raison || `${e.total} en silo · ${e.dist} cases`,
+          act: 'tirer_ici', data: { armee: e.silo?.id ?? -1, genre: id, case: i }, danger: id === 'missile_nucleaire', off: !!raison });
       }
       const missiles = possede(S, 'missile_non_conventionnel');
       for (const o of ARMES_SPECIALES) {
@@ -1647,15 +1661,16 @@ export function actionsRadiales(S, i) {
         if (n < 1) continue;
         const manque = exigeMissile(o) && missiles < 1;
         frappes.push({ ico: ICONES_ARMES[o], label: nomObjet(S, o),
-          info: manque ? 'Il faut un missile non conventionnel' : `${fmt(n)} en stock · depuis votre silo${exigeMissile(o) ? ` · ${fmt(missiles)} missile${missiles >= 2 ? 's' : ''}` : ''}`,
-          act: 'arme_ici', data: { objet: o, case: i }, danger: true, off: manque });
+          info: !guerre ? "Déclarez d'abord la guerre (Diplomatie)" : manque ? 'Il faut un missile non conventionnel' : `${fmt(n)} en stock · depuis votre silo${exigeMissile(o) ? ` · ${fmt(missiles)} missile${missiles >= 2 ? 's' : ''}` : ''}`,
+          act: 'arme_ici', data: { objet: o, case: i }, danger: true, off: manque || !guerre });
       }
       const lasers = possede(S, 'laser') + possede(S, 'laser_militaire');
       if (lasers >= 1) {
         const recharge = m.laser_recharge || 0;
-        frappes.push({ ico: 'wand-magic-sparkles', label: 'Tir laser', act: 'laser_ici', data: { case: i }, danger: true, off: recharge > 0,
-          info: recharge > 0 ? `Recharge encore ${recharge} s` : `Instantané · portée ${possede(S, 'laser_militaire') >= 1 ? 8 : 4} cases de votre territoire` });
+        frappes.push({ ico: 'wand-magic-sparkles', label: 'Tir laser', act: 'laser_ici', data: { case: i }, danger: true, off: recharge > 0 || !guerre,
+          info: !guerre ? "Déclarez d'abord la guerre (Diplomatie)" : recharge > 0 ? `Recharge encore ${recharge} s` : `Instantané · portée ${possede(S, 'laser_militaire') >= 1 ? 8 : 4} cases de votre territoire` });
       }
+      if (!frappes.length) frappes.push({ ico: 'rocket', label: 'Aucun missile', info: 'Construisez un silo, puis produisez-y des missiles (Gérer le silo)', off: true });
       if (frappes.length) items.push(frappes.length === 1 ? frappes[0] : { ico: 'crosshairs', label: 'Frappes', sous: frappes, danger: true });
     }
   }

@@ -340,8 +340,17 @@ function clicCarte(i, e) {
 // le meme gestionnaire que le reste de l'interface les execute.
 let radial = null; // { i, pile: [entrees], x, y }
 
+/** Au-dela de 10 entrees, les boutons se chevauchent : les suivantes passent
+ *  dans « Plus… » (recursif), et chaque sous-menu est decoupe pareil. */
+const RADIAL_MAX = 10;
+function paginer(items) {
+  items = items.map(it => it.sous ? { ...it, sous: paginer(it.sous) } : it);
+  if (items.length <= RADIAL_MAX) return items;
+  return [...items.slice(0, RADIAL_MAX - 1), { ico: 'ellipsis', label: 'Plus…', info: `${items.length - RADIAL_MAX + 1} autres`, sous: paginer(items.slice(RADIAL_MAX - 1)) }];
+}
+
 function ouvrirRadial(i, e) {
-  const items = actionsRadiales(S, i);
+  const items = paginer(actionsRadiales(S, i));
   // Seulement « Infos » : inutile d'ouvrir un cercle.
   if (items.length === 1) { choisirCase(i); return; }
   const r = $('#wf-carte').getBoundingClientRect();
@@ -995,6 +1004,7 @@ const ACTIONS = {
   arme_ici: d => confirmerArme(d.objet, +d.case, ' depuis votre silo'),
   bouclier_ici: d => agir('bouclier_energie', { case: +d.case }),
   laser_ici: d => agir('tir_laser', { cible: +d.case }),
+  construire_liste: d => { choisirCase(+d.case); ouvrirPanneau('construction', { garder: true }); },
   deplacer_ici: d => agir('deplacer', { armee: +d.armee, cible: +d.case }),
   deplacer_toutes: async d => {
     const liste = S.armees.filter(a => a.proprio === S.moi.id && a.dom === d.dom && a.case !== +d.case);
